@@ -456,4 +456,4 @@ packaging model).
 | 007 | **Constraint + score scheduler**, explanations persisted |
 | 008 | **Docker Compose** first; orchestrator-agnostic binaries |
 | 009 | **DRM-aware, not a DRM vendor**; pluggable key/DRM providers |
-| 010 | **Admin UI deferred**; API-first, decided at P1 |
+| 010 | **Admin UI deferred**; API-first, Svelte + Vite SPA at P1 |
