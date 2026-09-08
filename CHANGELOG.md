@@ -8,6 +8,22 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Media probing.** A probe job inspects a source and records what it
+  contains: container, duration, bitrate, and every video, audio and subtitle
+  track with codec, resolution, frame rate, pixel format, bit depth, language,
+  title, disposition and accessibility role.
+  - **Colour and HDR are preserved.** Primaries, transfer, matrix and range are
+    recorded as found, and the HDR format is derived from them and from side
+    data: HDR10, HLG, HDR10+, Dolby Vision, or SDR. An HDR source is never
+    silently recorded as SDR.
+  - `POST /v1/jobs` — run a pipeline against an asset version. Refuses a source
+    that has not been verified (`409 source_unverified`), so expensive work
+    never starts on a half-uploaded file.
+  - `GET /v1/jobs/{id}` — job state with its tasks.
+  - `POST /v1/jobs/{id}/cancel` — cancel a job and everything it has queued.
+  - `GET /v1/pipelines` — the pipelines you can name. `probe` is the first.
+  - `GET /v1/assets/{id}` now includes each version's `media`: what the probe
+    found. Absent rather than empty when a version has not been probed.
 - **`transflux-worker`, the worker binary.** Deployed independently of the
   control plane; it needs only an outbound route to it — no inbound
   connectivity, no orchestrator, and no database or storage credentials of its
@@ -108,6 +124,9 @@ pre-release and does not yet follow semantic versioning.
   verified now.
 - A missing or unreachable bucket now fails at startup instead of surfacing as
   a `500` on the first upload. In `dev` the bucket is created automatically.
+- A worker's input URL is signed when the work is handed out, not when the job
+  is created. A task can sit queued for hours behind a busy fleet, and a URL
+  minted at creation would already have expired.
 - Workers are fleet infrastructure, not tenant resources: one worker serves
   every tenant, so worker endpoints are `admin`-scoped and the worker protocol
   sits outside the `/v1` tenant surface entirely. A worker credential carries no

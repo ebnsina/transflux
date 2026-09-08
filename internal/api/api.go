@@ -15,6 +15,9 @@ import (
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/job"
+	"github.com/ebnsina/transflux/internal/pipeline"
+	"github.com/ebnsina/transflux/internal/probe"
+	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/upload"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
@@ -27,8 +30,14 @@ type Deps struct {
 	Uploads           *upload.Service
 	Workers           *worker.Store
 	Jobs              *job.Store
+	Pipelines         *pipeline.Store
+	Probes            *probe.Store
+	Storage           storage.Store
 	HeartbeatInterval time.Duration
 	LeaseTTL          time.Duration
+	// SourceURLTTL must comfortably outlast a lease, or a worker's input URL
+	// expires part way through a long encode.
+	SourceURLTTL time.Duration
 }
 
 type Server struct{ d Deps }
@@ -72,6 +81,11 @@ func (s *Server) Handler() http.Handler {
 
 	// The fleet is shared infrastructure, so its endpoints are an operator
 	// concern rather than a tenant one.
+	v1.Handle("POST /v1/jobs", scoped(auth.ScopeJobsWrite, s.handleCreateJob))
+	v1.Handle("GET /v1/jobs/{id}", scoped(auth.ScopeJobsRead, s.handleGetJob))
+	v1.Handle("POST /v1/jobs/{id}/cancel", scoped(auth.ScopeJobsWrite, s.handleCancelJob))
+	v1.Handle("GET /v1/pipelines", scoped(auth.ScopeJobsRead, s.handleListPipelines))
+
 	v1.Handle("GET /v1/workers", adminScoped(s.handleListWorkers))
 	v1.Handle("GET /v1/workers/{id}", adminScoped(s.handleGetWorker))
 	v1.Handle("POST /v1/workers/{id}/state", adminScoped(s.handleSetWorkerState))

@@ -98,11 +98,19 @@ func TestLeaseToCompletion(t *testing.T) {
 		t.Fatalf("progress gave (%v, %v), want (false, nil)", cancelled, err)
 	}
 
-	retrying, err := f.store.Complete(ctx, a.AttemptID, w, Result{
+	done, err := f.store.Complete(ctx, a.AttemptID, w, Result{
 		Success: true, Metrics: Metrics{CPUSeconds: 12.5, WallSeconds: 4, BytesIn: 1024},
 	})
-	if err != nil || retrying {
-		t.Fatalf("complete gave (%v, %v), want (false, nil)", retrying, err)
+	if err != nil || done.Retrying {
+		t.Fatalf("complete gave (%+v, %v), want no retry and no error", done, err)
+	}
+	// The completion must say what finished, so operation-specific handling
+	// can happen without the job package knowing about media.
+	if done.Operation != "probe" || !done.Succeeded {
+		t.Errorf("completion = %+v, want a successful probe", done)
+	}
+	if done.AssetVersionID != f.version {
+		t.Errorf("completion asset version = %v, want %v", done.AssetVersionID, f.version)
 	}
 
 	after := f.tasksByOp(t, j.ID)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -148,6 +149,14 @@ func (s *Server) handleWorkerLease(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		internalError(w, r, "lease task", err)
 	default:
+		// Signed now rather than when the job was created: a task can sit
+		// queued for hours, and a URL minted then would already have expired.
+		resolved, err := s.resolveSpec(r, assignment.Spec)
+		if err != nil {
+			internalError(w, r, "resolve task spec", err)
+			return
+		}
+		assignment.Spec = resolved
 		writeJSON(w, http.StatusOK, assignment)
 	}
 }
@@ -206,15 +215,29 @@ func (s *Server) handleWorkerComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	retrying, err := s.d.Jobs.Complete(r.Context(), attemptID, wk.ID, res)
+	completion, err := s.d.Jobs.Complete(r.Context(), attemptID, wk.ID, res)
 	switch {
 	case errors.Is(err, job.ErrStaleAttempt):
 		staleAttempt(w)
+		return
 	case err != nil:
 		internalError(w, r, "complete attempt", err)
-	default:
-		writeJSON(w, http.StatusOK, map[string]any{"retrying": retrying})
+		return
 	}
+
+	// Operation-specific handling lives here rather than in the job package,
+	// which knows nothing about media.
+	if completion.Succeeded && completion.Operation == "probe" && len(res.Output) > 0 {
+		if _, err := s.d.Probes.Record(r.Context(), completion.TenantID,
+			completion.AssetVersionID, res.Output); err != nil {
+			// The work itself succeeded; failing the worker's call would make
+			// it redo an encode because we could not parse a probe.
+			slog.ErrorContext(r.Context(), "could not record probe results",
+				"asset_version_id", completion.AssetVersionID, "err", err)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"retrying": completion.Retrying})
 }
 
 func (s *Server) workerAttempt(w http.ResponseWriter, r *http.Request) (worker.Worker, uuid.UUID, bool) {

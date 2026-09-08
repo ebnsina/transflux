@@ -38,6 +38,9 @@ type Config struct {
 	// How often expired leases are reclaimed. Frequent enough that a dead
 	// worker's task restarts promptly, cheap enough to run forever.
 	LeaseSweepInterval time.Duration
+	// How long a worker's presigned source URL stays valid. Comfortably longer
+	// than a lease, so a long encode does not lose its input part way through.
+	SourceURLTTL time.Duration
 }
 
 func Load() (Config, error) {
@@ -84,6 +87,7 @@ func Load() (Config, error) {
 		c.LeaseTTL = time.Duration(secs) * time.Second
 	}
 	c.LeaseSweepInterval = 5 * time.Second
+	c.SourceURLTTL = 6 * time.Hour
 
 	lvl := env("TRANSFLUX_LOG_LEVEL", "info")
 	if err := c.LogLevel.UnmarshalText([]byte(strings.ToUpper(lvl))); err != nil {

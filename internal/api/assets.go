@@ -7,6 +7,7 @@ import (
 
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
+	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/upload"
 )
 
@@ -17,7 +18,12 @@ type createAssetRequest struct {
 
 type assetResponse struct {
 	asset.Asset
-	Versions []asset.Version `json:"versions,omitempty"`
+	Versions []versionResponse `json:"versions,omitempty"`
+}
+
+type versionResponse struct {
+	asset.Version
+	Media *probe.Result `json:"media,omitempty"`
 }
 
 func (s *Server) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +49,8 @@ func (s *Server) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, "create asset", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, assetResponse{Asset: a, Versions: []asset.Version{v}})
+	writeJSON(w, http.StatusCreated, assetResponse{
+		Asset: a, Versions: []versionResponse{{Version: v}}})
 }
 
 func (s *Server) handleListAssets(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +99,21 @@ func (s *Server) handleGetAsset(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, "list asset versions", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, assetResponse{Asset: a, Versions: versions})
+
+	out := make([]versionResponse, 0, len(versions))
+	for _, v := range versions {
+		vr := versionResponse{Version: v}
+		// What the probe found, when there is one. Absent rather than empty
+		// so an unprobed version is distinguishable from one with no tracks.
+		if media, err := s.d.Probes.Get(r.Context(), p.TenantID, v.ID); err == nil {
+			vr.Media = &media
+		} else if !errors.Is(err, probe.ErrNotFound) {
+			internalError(w, r, "load probe", err)
+			return
+		}
+		out = append(out, vr)
+	}
+	writeJSON(w, http.StatusOK, assetResponse{Asset: a, Versions: out})
 }
 
 type createUploadRequest struct {

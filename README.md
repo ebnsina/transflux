@@ -101,6 +101,8 @@ internal/auth/       API keys, authentication, scopes
 internal/tenant/     tenants and quotas
 internal/audit/      append-only audit trail, redaction
 internal/job/        jobs, tasks, attempts, the task state machine
+internal/pipeline/   built-in pipeline presets
+internal/probe/      ffprobe parsing, tracks, colour and HDR
 internal/worker/     worker registry, capabilities, heartbeats, lifecycle
 internal/config/     environment configuration
 internal/db/         pool + embedded forward-only migrations

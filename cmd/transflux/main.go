@@ -27,6 +27,8 @@ import (
 	"github.com/ebnsina/transflux/internal/config"
 	"github.com/ebnsina/transflux/internal/db"
 	"github.com/ebnsina/transflux/internal/job"
+	"github.com/ebnsina/transflux/internal/pipeline"
+	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/tenant"
 	"github.com/ebnsina/transflux/internal/upload"
@@ -103,6 +105,10 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 			Jobs:              jobs,
 			HeartbeatInterval: cfg.HeartbeatInterval,
 			LeaseTTL:          cfg.LeaseTTL,
+			Pipelines:         pipeline.NewStore(pool),
+			Probes:            probe.NewStore(pool),
+			Storage:           store,
+			SourceURLTTL:      cfg.SourceURLTTL,
 		}).Handler(),
 	}
 

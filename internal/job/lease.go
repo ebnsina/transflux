@@ -105,14 +105,34 @@ func (s *Store) Progress(ctx context.Context, attemptID, workerID uuid.UUID,
 	return cancelled, err
 }
 
+// Completion tells the caller what finished, so operation-specific handling
+// (persisting a probe's findings, say) can happen without the job package
+// knowing anything about media.
+type Completion struct {
+	Operation      string
+	TaskID         uuid.UUID
+	JobID          uuid.UUID
+	TenantID       uuid.UUID
+	AssetVersionID uuid.UUID
+	Succeeded      bool
+	Retrying       bool
+}
+
 // Complete finishes an attempt and applies the retry policy to its task.
-func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res Result) (retrying bool, err error) {
+func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res Result) (c Completion, err error) {
+	var retrying bool
 	err = s.withAttempt(ctx, attemptID, workerID, func(tx pgx.Tx, at attemptRow) error {
+		c = Completion{
+			Operation: at.operation, TaskID: at.taskID, JobID: at.jobID,
+			TenantID: at.tenantID, AssetVersionID: at.assetVersionID,
+			Succeeded: res.Success,
+		}
 		// The task was cancelled while this worker was still running it. Its
 		// result is discarded, but reporting is not an error — a worker that
 		// finished just before the cancel landed did nothing wrong, and
 		// failing its call would only make it retry.
 		if at.taskState == TaskCancelled {
+			c.Succeeded = false
 			return closeAttemptCancelled(ctx, tx, attemptID)
 		}
 
@@ -177,7 +197,8 @@ func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res
 		}
 		return s.reconcileJob(ctx, tx, at.tenantID, at.jobID)
 	})
-	return retrying, err
+	c.Retrying = retrying
+	return c, err
 }
 
 // closeAttemptCancelled ends an attempt whose task was cancelled underneath it.
@@ -190,11 +211,13 @@ func closeAttemptCancelled(ctx context.Context, tx pgx.Tx, attemptID uuid.UUID) 
 }
 
 type attemptRow struct {
-	tenantID  uuid.UUID
-	taskID    uuid.UUID
-	jobID     uuid.UUID
-	state     AttemptState
-	taskState TaskState
+	tenantID       uuid.UUID
+	taskID         uuid.UUID
+	jobID          uuid.UUID
+	assetVersionID uuid.UUID
+	operation      string
+	state          AttemptState
+	taskState      TaskState
 }
 
 // withAttempt locks an attempt and refuses anyone who is not its owner or whose
@@ -211,12 +234,15 @@ func (s *Store) withAttempt(ctx context.Context, attemptID, workerID uuid.UUID,
 
 	var at attemptRow
 	err = tx.QueryRow(ctx, `
-		select a.tenant_id, a.task_id, t.job_id, a.state, t.state
+		select a.tenant_id, a.task_id, t.job_id, j.asset_version_id, t.operation,
+		       a.state, t.state
 		  from task_attempts a
 		  join tasks t on t.id = a.task_id
+		  join jobs j on j.id = t.job_id
 		 where a.id = $1 and a.worker_id = $2
 		   for update of a`, attemptID, workerID,
-	).Scan(&at.tenantID, &at.taskID, &at.jobID, &at.state, &at.taskState)
+	).Scan(&at.tenantID, &at.taskID, &at.jobID, &at.assetVersionID, &at.operation,
+		&at.state, &at.taskState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Either the attempt does not exist, or it belongs to another worker.
 		// Both are the same answer to the caller.
