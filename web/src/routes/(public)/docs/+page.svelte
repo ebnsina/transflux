@@ -99,7 +99,8 @@ curl -s -X POST $TF/v1/artifacts/art_M9n0/playback \\
 <p class="muted">
 	Transflux takes a media file you own, records what is inside it, produces the renditions and
 	packaging you ask for, and hands out short-lived links to the results. This page explains the
-	shape of that work. The <a href={resolve('/docs/api')}>API reference</a> lists every endpoint.
+	shape of that work. The <a href={resolve('/docs/api')}>API reference</a> lists every endpoint you can
+	call.
 </p>
 
 <h2>The flow, end to end</h2>

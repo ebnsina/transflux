@@ -13,10 +13,16 @@ pre-release and does not yet follow semantic versioning.
   operator concerns, reachable only with a key a tenant is never issued, and
   publishing them told outsiders about a surface they cannot use.
 
-- **The public landing page now reads as a product page rather than a manual.**
-  It opens with what Transflux does and a real request with the response beside
-  it, shows the rendition ladder and the artifacts a job returns instead of
-  describing them, and keeps the prose to short claims a reader can scan.
+- **The public site has been rebuilt as a product site.** It opens with what
+  Transflux does and a real request with the response beside it, shows the
+  rendition ladder and the artifacts a job returns instead of describing them,
+  and keeps the prose to short claims a reader can scan. The header is part of
+  the page until you scroll, and the rungs of the ladder light up in turn,
+  because they encode at the same time and a still picture cannot say that.
+- **Code samples are syntax highlighted**, in the same palette as the rest of
+  the page rather than an editor's.
+- **The accent colour is lime.** Two of them, in fact: one that stays legible
+  as text on the page, and the brand lime, which only ever appears as a fill.
 
 ### Added
 

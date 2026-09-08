@@ -26,9 +26,15 @@
 	--text: #131920;
 	--muted: #5f6b7a;
 
-	--accent: #16a34a;
-	--accent-soft: rgba(22, 163, 74, 0.1);
+	--accent: #4d7c0f;
+	--accent-soft: rgba(77, 124, 15, 0.1);
 	--accent-contrast: #ffffff;
+
+	/* Two limes, because one cannot do both jobs. --accent is the lime that is
+	   still legible as text on the page ground; --brand is the lime the brand
+	   actually is, and it only ever appears as a fill with dark ink on it. */
+	--brand: #a3e635;
+	--brand-ink: #16210a;
 
 	--ok: #15803d;
 	--ok-soft: rgba(21, 128, 61, 0.1);
@@ -54,11 +60,14 @@
 		--text: #e9edf2;
 		--muted: #929daa;
 
-		/* A light green reads as the accent on a dark ground; the darker green
-		   used in light mode would disappear into it. */
-		--accent: #7ee787;
-		--accent-soft: rgba(126, 231, 135, 0.14);
-		--accent-contrast: #07130a;
+		/* Lime reads as the accent on a dark ground; the deeper lime used in
+		   light mode would disappear into it. */
+		--accent: #bef264;
+		--accent-soft: rgba(190, 242, 100, 0.14);
+		--accent-contrast: #17210a;
+
+		--brand: #bef264;
+		--brand-ink: #16210a;
 
 		--ok: #7ee787;
 		--ok-soft: rgba(126, 231, 135, 0.14);
@@ -82,9 +91,12 @@
 	--text: #e9edf2;
 	--muted: #929daa;
 
-	--accent: #7ee787;
-	--accent-soft: rgba(126, 231, 135, 0.14);
-	--accent-contrast: #07130a;
+	--accent: #bef264;
+	--accent-soft: rgba(190, 242, 100, 0.14);
+	--accent-contrast: #17210a;
+
+	--brand: #bef264;
+	--brand-ink: #16210a;
 
 	--ok: #7ee787;
 	--ok-soft: rgba(126, 231, 135, 0.14);
@@ -621,4 +633,41 @@ pre.reason {
 	font-family: var(--font-mono);
 	font-size: 12px;
 	line-height: 1.6;
+}
+
+/* Syntax highlighting (@tanstack/highlight emits these classes). The palette is
+   the page's own, so code reads as part of the design in either theme rather
+   than as a pasted-in editor screenshot. Injected markup is not reachable from
+   a component's scoped styles, so it lives here. */
+.th-token {
+	color: inherit;
+}
+.th-comment {
+	color: var(--muted);
+	font-style: italic;
+}
+.th-string,
+.th-link {
+	color: var(--accent);
+}
+.th-number,
+.th-literal {
+	color: var(--warn);
+}
+.th-keyword,
+.th-command,
+.th-function,
+.th-tag,
+.th-type {
+	color: var(--run);
+}
+.th-property,
+.th-attr,
+.th-variable {
+	color: var(--text);
+}
+.th-operator,
+.th-meta,
+.th-selector {
+	color: var(--muted);
 }
