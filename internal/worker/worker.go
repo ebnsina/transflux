@@ -296,6 +296,26 @@ func (s *Store) MarkStaleOffline(ctx context.Context, after time.Duration) (int6
 	return tag.RowsAffected(), nil
 }
 
+// Facts returns what the scheduler needs to match this worker against tasks:
+// declared capability plus current free disk. Free disk comes from the last
+// heartbeat, falling back to total disk when a worker has not reported yet.
+func (s *Store) Facts(ctx context.Context, id uuid.UUID) (Worker, int64, error) {
+	w, err := s.Get(ctx, id)
+	if err != nil {
+		return Worker{}, 0, err
+	}
+	var free *int64
+	err = s.pool.QueryRow(ctx,
+		`select disk_free_bytes from worker_resources where worker_id = $1`, id).Scan(&free)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Worker{}, 0, err
+	}
+	if free == nil || *free <= 0 {
+		return w, w.DiskBytes, nil
+	}
+	return w, *free, nil
+}
+
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (Worker, error) {
 	w, err := s.scanOne(ctx, `where w.id = $1`, id)
 	return w, err

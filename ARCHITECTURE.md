@@ -74,8 +74,8 @@ internal/
   asset/        assets, asset versions, source files, tracks, probe results
   upload/       resumable uploads, parts, completion verification
   pipeline/     pipeline definitions + versions, task graph expansion
-  job/          jobs, tasks, task attempts, state machine, cancellation
-  sched/        capability matching, scoring, leasing, expiry sweeper
+  job/          jobs, tasks, task attempts, state machine, cancellation,
+                capability matching, scoring, leasing, expiry sweeper
   worker/       registry, capabilities, heartbeats, lifecycle
   artifact/     artifact sets, artifacts, versioning, registration
   protect/      protection policies, keys, KIDs, DRM metadata, providers
@@ -87,9 +87,13 @@ cmd/transflux/  control plane binary
 cmd/transflux-worker/
 ```
 
-Rule: `sched` may read `worker` capabilities and `job` task requirements; it
-may not reach into `asset`. The task spec carries everything the data plane
-needs — the worker never queries the domain.
+Scheduling lives inside `job` rather than in a package of its own: a lease is a
+task state transition, and splitting it out would mean two packages writing
+`tasks.state`, which the state machine exists to prevent. The scheduler takes
+worker capability as a plain struct, so it never reaches into `worker` either.
+
+Rule: the task spec carries everything the data plane needs — the worker never
+queries the domain.
 
 ---
 
@@ -212,14 +216,27 @@ Worker asks "what next". The scheduler:
 2. **Rank** feasible tasks for this worker:
 
 ```
-score = priority_weight
-      × capability_fit      prefer the *least* capable worker that can do it,
-                            so GPU nodes are not consumed by 360p AAC work
-      × capacity_headroom
-      × fairness            tenant's running tasks vs. fair share
-      × locality            worker already holds this asset's source/chunks
-      × age                 queue-time bump, prevents starvation
+score = (priority + age_seconds × age_weight)   waiting is ADDITIVE and unbounded
+      × fairness                                1/(1 + tenant's running tasks)
+      × locality                                worker already ran part of this job
+      × capability_fit                          GPU node on non-GPU work is penalised
 ```
+
+Waiting adds to priority rather than multiplying it, and has no ceiling. A
+capped multiplier cannot prevent starvation: a large enough priority gap always
+wins no matter how long the loser waits. A task gains the equivalent of 100
+priority points per 10 minutes queued, so low-priority work eventually goes
+first.
+
+`capability_fit` is the pull-model form of "prefer the least capable worker
+that can do it": a GPU worker offered non-GPU work is penalised rather than
+excluded, so an expensive node is not spent on a 360p encode while GPU work
+waits — but an idle GPU node is still better than an idle queue.
+
+Capacity is a hard constraint rather than a ranking term: a worker declares
+capacity per workload class, and slot usage is counted from live attempts
+rather than from the worker's own heartbeat, which is stale and is reported by
+the party with an interest in the answer.
 
 3. **Lease** the winner: `SELECT ... FOR UPDATE SKIP LOCKED`, insert a
    `task_attempt`, set `LEASED`, write the reason string.

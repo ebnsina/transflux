@@ -90,6 +90,59 @@ func (f *fixture) linearJob(t *testing.T, key string) (Job, map[string]Task) {
 	return j, f.tasksByOp(t, j.ID)
 }
 
+// newTenantWithAssets makes a second tenant with its own asset version and
+// pipeline, for tests about fairness between tenants.
+func (f *fixture) newTenantWithAssets(t *testing.T) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	id := uuid.Must(uuid.NewV7())
+	if _, err := f.pool.Exec(ctx,
+		`insert into tenants (id, name, status) values ($1, $2, 'active')`,
+		id, "t-"+id.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := asset.NewStore(f.pool).Create(ctx, id, nil, nil, "managed"); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// requireJobFor creates a one-task job owned by another tenant.
+func (f *fixture) requireJobFor(t *testing.T, tenantID uuid.UUID, op string) Task {
+	t.Helper()
+	ctx := context.Background()
+
+	var versionID uuid.UUID
+	if err := f.pool.QueryRow(ctx,
+		`select id from asset_versions where tenant_id = $1 limit 1`, tenantID).Scan(&versionID); err != nil {
+		t.Fatal(err)
+	}
+
+	pipeID := uuid.Must(uuid.NewV7())
+	pipeVer := uuid.Must(uuid.NewV7())
+	if _, err := f.pool.Exec(ctx,
+		`insert into pipelines (id, tenant_id, name) values ($1, $2, $3)`,
+		pipeID, tenantID, "p-"+pipeID.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx,
+		`insert into pipeline_versions (id, tenant_id, pipeline_id, version, definition)
+		 values ($1, $2, $3, 1, '{}')`, pipeVer, tenantID, pipeID); err != nil {
+		t.Fatal(err)
+	}
+
+	j, err := f.store.Create(ctx, tenantID, versionID, pipeVer, "other-"+uuid.NewString(), 100,
+		[]NewTask{{Key: "only", Operation: op}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := f.store.Tasks(ctx, tenantID, j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tasks[0]
+}
+
 func (f *fixture) tasksByOp(t *testing.T, jobID uuid.UUID) map[string]Task {
 	t.Helper()
 	tasks, err := f.store.Tasks(context.Background(), f.tenant, jobID)

@@ -13,20 +13,56 @@ import (
 
 const leaseTTL = 60 * time.Second
 
+// newWorker registers a plain CPU worker with generous capacity, so tests that
+// are not about constraints are not accidentally about constraints.
 func (f *fixture) newWorker(t *testing.T) uuid.UUID {
 	t.Helper()
-	id := uuid.Must(uuid.NewV7())
+	return f.newWorkerWith(t, WorkerFacts{
+		Arch:         "arm64",
+		Operations:   []string{"probe", "encode", "package"},
+		Encoders:     []string{"libx264"},
+		MemoryBytes:  32 << 30,
+		DiskFree:     500 << 30,
+		SlotCapacity: map[string]int{"probe": 4, "encode": 4, "package": 4},
+	}).ID
+}
+
+func (f *fixture) newWorkerWith(t *testing.T, w WorkerFacts) WorkerFacts {
+	t.Helper()
+	w.ID = uuid.Must(uuid.NewV7())
+	w.Name = "w-" + w.ID.String()
 	// Credentials are unique per worker, so the fixture cannot share one.
-	credential := sha256.Sum256([]byte(id.String()))
+	credential := sha256.Sum256([]byte(w.ID.String()))
+
+	var gpu *string
+	if w.HasGPU {
+		model := "test-gpu"
+		gpu = &model
+	}
 	_, err := f.pool.Exec(context.Background(), `
 		insert into workers (id, name, hostname, os, arch, cpu_cores, memory_bytes,
-		                     disk_bytes, ffmpeg_version, protocol_version, state, credential_hash)
-		values ($1,$2,$3,'linux','arm64',8,1,1,'9.0.1',1,'online',$4)`,
-		id, "w-"+id.String(), "h-"+id.String(), credential[:])
+		                     disk_bytes, gpu_model, ffmpeg_version, protocol_version,
+		                     state, credential_hash)
+		values ($1,$2,$3,'linux',$4,8,$5,$6,$7,'9.0.1',1,'online',$8)`,
+		w.ID, w.Name, "h-"+w.ID.String(), w.Arch, w.MemoryBytes, w.DiskFree,
+		gpu, credential[:])
 	if err != nil {
 		t.Fatal(err)
 	}
-	return id
+	return w
+}
+
+// facts builds the scheduler's view of a plain CPU worker by id.
+func (f *fixture) facts(id uuid.UUID, ops ...string) WorkerFacts {
+	slots := map[string]int{}
+	for _, op := range ops {
+		slots[op] = 4
+	}
+	return WorkerFacts{
+		ID: id, Name: "w-" + id.String(), Arch: "arm64",
+		Operations: ops, Encoders: []string{"libx264"},
+		MemoryBytes: 32 << 30, DiskFree: 500 << 30, SlotCapacity: slots,
+	}
 }
 
 // The happy path the whole protocol exists for: lease, start, report progress,
@@ -37,7 +73,7 @@ func TestLeaseToCompletion(t *testing.T) {
 	w := f.newWorker(t)
 	j, tasks := f.linearJob(t, "lease-"+uuid.NewString())
 
-	a, err := f.store.Lease(ctx, w, []string{"probe", "encode"}, leaseTTL, "test")
+	a, err := f.store.Lease(ctx, f.facts(w, "probe", "encode"), leaseTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +86,7 @@ func TestLeaseToCompletion(t *testing.T) {
 	}
 
 	// A second worker asking now must get nothing: the only ready task is taken.
-	if _, err := f.store.Lease(ctx, f.newWorker(t), []string{"probe"}, leaseTTL, "test"); !errors.Is(err, ErrNoWork) {
+	if _, err := f.store.Lease(ctx, f.facts(f.newWorker(t), "probe"), leaseTTL); !errors.Is(err, ErrNoWork) {
 		t.Errorf("a leased task was handed out twice: %v", err)
 	}
 
@@ -74,7 +110,7 @@ func TestLeaseToCompletion(t *testing.T) {
 		t.Errorf("probe state = %s, want succeeded", after["probe"].State)
 	}
 	// Finishing probe released encode, so the next lease finds work.
-	next, err := f.store.Lease(ctx, w, []string{"probe", "encode"}, leaseTTL, "test")
+	next, err := f.store.Lease(ctx, f.facts(w, "probe", "encode"), leaseTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +126,7 @@ func TestLeaseToCompletion(t *testing.T) {
 	if _, err := f.store.Complete(ctx, next.AttemptID, w, Result{Success: true}); err != nil {
 		t.Fatal(err)
 	}
-	last, err := f.store.Lease(ctx, w, []string{"package"}, leaseTTL, "test")
+	last, err := f.store.Lease(ctx, f.facts(w, "package"), leaseTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,13 +167,13 @@ func TestLeaseRespectsOperations(t *testing.T) {
 	w := f.newWorker(t)
 	f.linearJob(t, "ops-"+uuid.NewString())
 
-	if _, err := f.store.Lease(ctx, w, []string{"transcribe"}, leaseTTL, "test"); !errors.Is(err, ErrNoWork) {
+	if _, err := f.store.Lease(ctx, f.facts(w, "transcribe"), leaseTTL); !errors.Is(err, ErrNoWork) {
 		t.Errorf("a worker was given work it cannot do: %v", err)
 	}
-	if _, err := f.store.Lease(ctx, w, nil, leaseTTL, "test"); !errors.Is(err, ErrNoWork) {
+	if _, err := f.store.Lease(ctx, f.facts(w), leaseTTL); !errors.Is(err, ErrNoWork) {
 		t.Errorf("a worker declaring no operations was given work: %v", err)
 	}
-	if _, err := f.store.Lease(ctx, w, []string{"probe"}, leaseTTL, "test"); err != nil {
+	if _, err := f.store.Lease(ctx, f.facts(w, "probe"), leaseTTL); err != nil {
 		t.Errorf("a capable worker got nothing: %v", err)
 	}
 }
@@ -151,7 +187,7 @@ func TestStaleAttemptCannotReport(t *testing.T) {
 	second := f.newWorker(t)
 	f.linearJob(t, "stale-"+uuid.NewString())
 
-	a, err := f.store.Lease(ctx, first, []string{"probe"}, leaseTTL, "test")
+	a, err := f.store.Lease(ctx, f.facts(first, "probe"), leaseTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +225,7 @@ func TestCancellationReachesTheWorkerViaProgress(t *testing.T) {
 	w := f.newWorker(t)
 	j, _ := f.linearJob(t, "cancel-lease-"+uuid.NewString())
 
-	a, err := f.store.Lease(ctx, w, []string{"probe"}, leaseTTL, "test")
+	a, err := f.store.Lease(ctx, f.facts(w, "probe"), leaseTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +258,7 @@ func TestSilentWorkerDeathConsumesBudget(t *testing.T) {
 	_, tasks := f.linearJob(t, "budget-"+uuid.NewString())
 
 	for i := 1; i <= 3; i++ {
-		a, err := f.store.Lease(ctx, f.newWorker(t), []string{"probe"}, leaseTTL, "test")
+		a, err := f.store.Lease(ctx, f.facts(f.newWorker(t), "probe"), leaseTTL)
 		if err != nil {
 			t.Fatalf("lease %d: %v", i, err)
 		}
@@ -245,7 +281,7 @@ func TestSilentWorkerDeathConsumesBudget(t *testing.T) {
 	}
 
 	// The fourth lease is allowed, but its failure is final: the budget is gone.
-	a, err := f.store.Lease(ctx, f.newWorker(t), []string{"probe"}, leaseTTL, "test")
+	a, err := f.store.Lease(ctx, f.facts(f.newWorker(t), "probe"), leaseTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +321,7 @@ func TestConcurrentLeasesDoNotCollide(t *testing.T) {
 	for _, w := range workers {
 		go func() {
 			defer wg.Done()
-			a, err := f.store.Lease(ctx, w, []string{"probe"}, leaseTTL, "test")
+			a, err := f.store.Lease(ctx, f.facts(w, "probe"), leaseTTL)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

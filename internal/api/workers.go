@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -124,15 +123,25 @@ func (s *Server) handleWorkerLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Operations []string `json:"operations"`
-	}
-	if !decode(w, r, &req) {
+	// Capabilities come from the registry, not from the request: a worker
+	// cannot widen what it is allowed to run by asking for more.
+	full, diskFree, err := s.d.Workers.Facts(r.Context(), wk.ID)
+	if err != nil {
+		internalError(w, r, "worker facts", err)
 		return
 	}
 
-	reason := fmt.Sprintf("worker %s (%s) requested %v", wk.Name, wk.ID, req.Operations)
-	assignment, err := s.d.Jobs.Lease(r.Context(), wk.ID, req.Operations, s.d.LeaseTTL, reason)
+	assignment, err := s.d.Jobs.Lease(r.Context(), job.WorkerFacts{
+		ID:           full.ID,
+		Name:         full.Name,
+		Arch:         full.Arch,
+		Operations:   full.Capabilities.Operations,
+		Encoders:     full.Capabilities.Encoders,
+		HasGPU:       full.GPUModel != nil,
+		MemoryBytes:  full.MemoryBytes,
+		DiskFree:     diskFree,
+		SlotCapacity: full.SlotCapacity,
+	}, s.d.LeaseTTL)
 	switch {
 	case errors.Is(err, job.ErrNoWork):
 		w.WriteHeader(http.StatusNoContent)
