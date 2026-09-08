@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { api, type Job } from '$lib/api';
 	import { ago, short } from '$lib/format';
+	import { describe } from '$lib/problem';
 	import State from '$lib/components/State.svelte';
 	import Poll from '$lib/components/Poll.svelte';
 
@@ -13,7 +14,7 @@
 			jobs = (await api.get<{ jobs: Job[] }>('/v1/jobs?limit=100')).jobs;
 			error = '';
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
@@ -26,16 +27,16 @@
 
 <Poll {active} {load} />
 
-<h1>Jobs</h1>
+<h1>Activity</h1>
 {#if error}<p class="error">{error}</p>{/if}
 
 <div class="panel">
 	{#if jobs.length === 0}
-		<p class="muted">No jobs yet.</p>
+		<p class="muted">Nothing has been processed yet.</p>
 	{:else}
 		<table>
 			<thead>
-				<tr><th>Job</th><th>State</th><th>Created</th><th>Finished</th><th>Reason</th></tr>
+				<tr><th>Reference</th><th>Status</th><th>Started</th><th>Finished</th></tr>
 			</thead>
 			<tbody>
 				{#each jobs as job (job.id)}
@@ -45,7 +46,6 @@
 						<td><State value={job.state} /></td>
 						<td class="muted">{ago(job.created_at)}</td>
 						<td class="muted">{job.finished_at ? ago(job.finished_at) : '—'}</td>
-						<td class="muted">{job.failure_reason ?? ''}</td>
 					</tr>
 				{/each}
 			</tbody>

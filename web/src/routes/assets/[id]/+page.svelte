@@ -4,6 +4,9 @@
 	import { resolve } from '$app/paths';
 	import { api, type Asset, type Pipeline, type Track } from '$lib/api';
 	import { bytes, duration, fps } from '$lib/format';
+	import { describe } from '$lib/problem';
+	import { pipeline as pipelineName } from '$lib/words';
+	import { setTrail } from '$lib/breadcrumb.svelte';
 	import State from '$lib/components/State.svelte';
 
 	const id = $derived(page.params.id!);
@@ -25,8 +28,9 @@
 			asset = a;
 			pipelines = p.pipelines;
 			error = '';
+			setTrail(a.name ?? 'Untitled');
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
@@ -64,15 +68,15 @@
 				const start = (part.number - 1) * part_size;
 				const chunk = file.slice(start, Math.min(start + part_size, file.size));
 				const res = await fetch(part.url, { method: 'PUT', body: chunk });
-				if (!res.ok) throw new Error(`Uploading part ${part.number} failed: ${res.status}`);
+				if (!res.ok) throw new Error('upload');
 				progress = Math.round((part.number / created.upload.part_count) * 100);
 			}
 
 			await api.post(`/v1/uploads/${created.upload.id}/complete`);
-			notice = 'Upload complete and verified.';
+			notice = 'Upload finished and checked.';
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 		uploading = false;
 	}
@@ -86,11 +90,11 @@
 			});
 			await goto(resolve('/jobs/[id]', { id: created.job.id }));
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
-	function describe(t: Track): string {
+	function trackSummary(t: Track): string {
 		if (t.kind === 'video') {
 			return `${t.width}×${t.height} ${t.codec} ${t.pixel_format ?? ''} ${t.bit_depth ?? 8}-bit · ${fps(t.fps_num, t.fps_den)} fps`;
 		}
@@ -107,14 +111,14 @@
 {#if asset}
 	<div class="spread">
 		<div>
-			<h1>{asset.name ?? '(unnamed asset)'}</h1>
+			<h1>{asset.name ?? 'Untitled'}</h1>
 			<p class="muted mono">{asset.id}</p>
 		</div>
 		<State value={asset.status} />
 	</div>
 
 	{#if version}
-		<h2>Source</h2>
+		<h2>The file</h2>
 		<div class="panel">
 			<div class="spread">
 				<div class="row">
@@ -129,7 +133,7 @@
 					<div class="row">
 						<input type="file" onchange={(e) => (files = e.currentTarget.files)} />
 						<button class="primary" onclick={upload} disabled={uploading || !files?.length}>
-							{uploading ? `Uploading ${progress}%` : 'Upload'}
+							{uploading ? `Uploading ${progress}%` : 'Upload file'}
 						</button>
 					</div>
 				{/if}
@@ -138,13 +142,19 @@
 			{#if media?.tracks?.length}
 				<table style="margin-top:12px">
 					<thead>
-						<tr><th>Track</th><th>Detail</th><th>Colour</th></tr>
+						<tr><th>Part</th><th>Details</th><th>Colour</th></tr>
 					</thead>
 					<tbody>
 						{#each media.tracks as track (track.stream_index)}
 							<tr>
-								<td>{track.kind}</td>
-								<td class="muted">{describe(track)}</td>
+								<td
+									>{track.kind === 'video'
+										? 'Picture'
+										: track.kind === 'audio'
+											? 'Sound'
+											: 'Subtitles'}</td
+								>
+								<td class="muted">{trackSummary(track)}</td>
 								<td class="muted mono">
 									{#if track.kind === 'video'}
 										{track.color_primaries ?? '—'} / {track.color_transfer ?? '—'}
@@ -161,21 +171,22 @@
 				</table>
 			{:else if version.status !== 'pending_source'}
 				<p class="muted" style="margin-top:12px">
-					Not probed yet. Run the probe pipeline to see what this contains.
+					We have not looked inside this yet. Choose “Read this media” below to see what it
+					contains.
 				</p>
 			{/if}
 		</div>
 
 		{#if version.status !== 'pending_source'}
-			<h2>Run a pipeline</h2>
+			<h2>What you can do with it</h2>
 			<div class="panel">
 				{#each pipelines as pipeline (pipeline.name)}
 					<div class="spread" style="padding:6px 0">
 						<div>
-							<strong>{pipeline.name}</strong>
+							<strong>{pipelineName(pipeline.name)}</strong>
 							<div class="muted">{pipeline.description}</div>
 						</div>
-						<button onclick={() => run(pipeline.name)}>Run</button>
+						<button onclick={() => run(pipeline.name)}>Start</button>
 					</div>
 				{/each}
 			</div>

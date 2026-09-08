@@ -21,19 +21,25 @@ export function clearApiKey() {
 	localStorage.removeItem(KEY_STORAGE);
 }
 
+/**
+ * ApiError carries the code, never the server's own words.
+ *
+ * Error text from the API can contain storage keys, identifiers and internal
+ * state. None of it helps a reader, so the code chooses the wording and the
+ * original is not kept.
+ */
 export class ApiError extends Error {
 	constructor(
 		readonly status: number,
-		readonly code: string,
-		message: string
+		readonly code: string
 	) {
-		super(message);
+		super(code);
 	}
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
 	const key = apiKey();
-	if (!key) throw new ApiError(401, 'no_key', 'No API key has been set.');
+	if (!key) throw new ApiError(401, 'no_key');
 
 	const res = await fetch(path, {
 		method,
@@ -49,10 +55,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 	const text = await res.text();
 	const parsed = text ? JSON.parse(text) : {};
 	if (!res.ok) {
-		// The API returns a consistent envelope, so surface its own words
-		// rather than inventing a message.
-		const err = parsed?.error ?? {};
-		throw new ApiError(res.status, err.code ?? 'error', err.message ?? res.statusText);
+		throw new ApiError(res.status, parsed?.error?.code);
 	}
 	return parsed as T;
 }

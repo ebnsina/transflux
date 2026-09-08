@@ -1,9 +1,13 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { apiKey, setApiKey, clearApiKey, api, type Identity } from '$lib/api';
+	import { describe } from '$lib/problem';
 	import { short } from '$lib/format';
-	import { apply, label, next, stored, type Theme } from '$lib/theme.svelte';
+	import { groups, section } from '$lib/nav';
+	import { currentTrail, setTrail } from '$lib/breadcrumb.svelte';
+	import { apply, label as themeLabel, next, stored, type Theme } from '$lib/theme.svelte';
+	import Logo from '$lib/components/Logo.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -13,24 +17,27 @@
 	let error = $state('');
 	let checking = $state(true);
 	let theme = $state<Theme>('system');
+	let menuOpen = $state(false);
 
-	// Restore the stored preference on load, before anything is measured
-	// against it.
 	$effect(() => {
 		theme = stored();
 		apply(theme);
 	});
 
-	function cycleTheme() {
-		theme = next(theme);
-		apply(theme);
-	}
-
-	// Verify the stored key on load rather than assuming it still works: keys
-	// are revocable, and a dashboard that silently shows nothing is worse than
-	// one that says why.
+	// Verify the stored key rather than assuming it still works: keys are
+	// revocable, and a dashboard that silently shows nothing is worse than one
+	// that says why.
 	$effect(() => {
 		void verify();
+	});
+
+	// A detail page owns its own label, so leaving one has to clear it or the
+	// crumb would follow you to the next page.
+	$effect(() => {
+		const path = page.url.pathname;
+		return () => {
+			if (path !== page.url.pathname) setTrail(null);
+		};
 	});
 
 	async function verify() {
@@ -45,82 +52,115 @@
 			identity = await api.get<Identity>('/v1/me');
 		} catch (e) {
 			identity = null;
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 		checking = false;
 	}
 
-	async function connect(event: SubmitEvent) {
+	async function signIn(event: SubmitEvent) {
 		event.preventDefault();
 		setApiKey(key);
 		key = '';
 		await verify();
 	}
 
-	function disconnect() {
+	function signOut() {
 		clearApiKey();
 		identity = null;
 	}
 
-	const nav = [
-		{ href: '/' as const, label: 'Overview' },
-		{ href: '/assets' as const, label: 'Assets' },
-		{ href: '/jobs' as const, label: 'Jobs' },
-		{ href: '/workers' as const, label: 'Workers' }
-	];
+	function cycleTheme() {
+		theme = next(theme);
+		apply(theme);
+	}
+
+	const active = $derived(section(page.url.pathname));
+	const trail = $derived(currentTrail());
 </script>
 
-<div class="shell">
-	<header>
-		<a class="brand" href={resolve('/')}>transflux</a>
-		{#if identity}
+{#if checking}
+	<p class="centred muted">Signing you in…</p>
+{:else if !identity}
+	<section class="signin">
+		<div class="signin-head">
+			<Logo size={26} />
+			<button class="icon" onclick={cycleTheme}>{themeLabel(theme)}</button>
+		</div>
+		<h1>Sign in</h1>
+		<p class="muted">Enter the access key for your account to continue.</p>
+		<form onsubmit={signIn}>
+			<input
+				type="password"
+				bind:value={key}
+				placeholder="Access key"
+				autocomplete="off"
+				spellcheck="false"
+			/>
+			<button class="primary" type="submit" disabled={!key.trim()}>Sign in</button>
+		</form>
+		{#if error}<p class="error" style="margin-top:14px">{error}</p>{/if}
+	</section>
+{:else}
+	<div class="app" class:menu-open={menuOpen}>
+		<aside class="sidebar">
+			<a class="brand" href={resolve('/')} onclick={() => (menuOpen = false)}>
+				<Logo />
+			</a>
+
 			<nav>
-				{#each nav as item (item.href)}
-					<a
-						href={resolve(item.href)}
-						class:active={item.href === '/'
-							? page.url.pathname === '/'
-							: page.url.pathname.startsWith(item.href)}>{item.label}</a
-					>
+				{#each groups as group (group.title)}
+					<div class="group">
+						<p class="group-title">{group.title}</p>
+						{#each group.items as item (item.href)}
+							<a
+								href={resolve(item.href)}
+								class:active={active?.href === item.href}
+								onclick={() => (menuOpen = false)}
+							>
+								<span class="item-label">{item.label}</span>
+								<span class="item-hint">{item.hint}</span>
+							</a>
+						{/each}
+					</div>
 				{/each}
 			</nav>
-			<div class="identity">
-				<span class="muted">tenant {short(identity.tenant_id)}</span>
-				<button class="icon" onclick={cycleTheme} title="Theme: {label(theme)}">
-					{label(theme)}
-				</button>
-				<button class="link" onclick={disconnect}>sign out</button>
-			</div>
-		{/if}
-	</header>
 
-	<main>
-		{#if checking}
-			<p class="muted">Checking credentials…</p>
-		{:else if identity}
-			{@render children()}
-		{:else}
-			<section class="signin">
-				<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-					<button class="icon" onclick={cycleTheme}>{label(theme)}</button>
-				</div>
-				<h1>Connect</h1>
-				<p class="muted">
-					Paste an API key. Create one with
-					<code>transflux bootstrap -name "Your tenant"</code>.
-				</p>
-				<form onsubmit={connect}>
-					<input
-						type="password"
-						bind:value={key}
-						placeholder="tf_live_…"
-						autocomplete="off"
-						spellcheck="false"
-					/>
-					<button type="submit" disabled={!key.trim()}>Connect</button>
-				</form>
-				{#if error}<p class="error">{error}</p>{/if}
-			</section>
-		{/if}
-	</main>
-</div>
+			<div class="sidebar-foot">
+				<span class="muted">Account {short(identity.tenant_id)}</span>
+				<button class="link" onclick={signOut}>Sign out</button>
+			</div>
+		</aside>
+
+		<div class="content">
+			<header class="topbar">
+				<button
+					class="icon menu-toggle"
+					onclick={() => (menuOpen = !menuOpen)}
+					aria-label="Toggle navigation">Menu</button
+				>
+
+				<nav class="crumbs" aria-label="Breadcrumb">
+					<a href={resolve('/')}>Dashboard</a>
+					{#if active && active.href !== '/'}
+						<span class="sep">/</span>
+						{#if trail}
+							<a href={resolve(active.href)}>{active.label}</a>
+							<span class="sep">/</span>
+							<span aria-current="page">{trail}</span>
+						{:else}
+							<span aria-current="page">{active.label}</span>
+						{/if}
+					{/if}
+				</nav>
+
+				<button class="icon" onclick={cycleTheme} title="Theme: {themeLabel(theme)}">
+					{themeLabel(theme)}
+				</button>
+			</header>
+
+			<main>
+				{@render children()}
+			</main>
+		</div>
+	</div>
+{/if}

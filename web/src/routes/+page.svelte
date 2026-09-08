@@ -2,7 +2,9 @@
 	import { resolve } from '$app/paths';
 	import { api, type Job, type Worker } from '$lib/api';
 	import { ago, short } from '$lib/format';
+	import { describe } from '$lib/problem';
 	import State from '$lib/components/State.svelte';
+	import { operation } from '$lib/words';
 	import Poll from '$lib/components/Poll.svelte';
 
 	let jobs = $state<Job[]>([]);
@@ -19,7 +21,7 @@
 			workers = w.workers;
 			error = '';
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
@@ -43,26 +45,26 @@
 <div class="grid">
 	<div class="stat">
 		<div class="value">{running}</div>
-		<div class="label">jobs in flight</div>
+		<div class="label">being processed</div>
 	</div>
 	<div class="stat">
 		<div class="value">{online}</div>
-		<div class="label">workers online</div>
+		<div class="label">machines available</div>
 	</div>
 	<div class="stat">
 		<div class="value">{failed}</div>
-		<div class="label">failed jobs</div>
+		<div class="label">need attention</div>
 	</div>
 </div>
 
-<h2>Recent jobs</h2>
+<h2>Recent activity</h2>
 <div class="panel">
 	{#if jobs.length === 0}
-		<p class="muted">No jobs yet. Create an asset, upload a source, then run a pipeline.</p>
+		<p class="muted">Nothing has been processed yet. Add some media to get started.</p>
 	{:else}
 		<table>
 			<thead>
-				<tr><th>Job</th><th>State</th><th>Created</th><th>Finished</th></tr>
+				<tr><th>Reference</th><th>Status</th><th>Started</th><th>Finished</th></tr>
 			</thead>
 			<tbody>
 				{#each jobs as job (job.id)}
@@ -79,14 +81,14 @@
 	{/if}
 </div>
 
-<h2>Fleet</h2>
+<h2>Machines</h2>
 <div class="panel">
 	{#if workers.length === 0}
-		<p class="muted">No workers have registered.</p>
+		<p class="muted">No machines are connected, so nothing can be processed yet.</p>
 	{:else}
 		<table>
 			<thead>
-				<tr><th>Worker</th><th>State</th><th>Arch</th><th>Operations</th><th>Heartbeat</th></tr>
+				<tr><th>Machine</th><th>Status</th><th>Type</th><th>Can do</th><th>Last seen</th></tr>
 			</thead>
 			<tbody>
 				{#each workers as w (w.id)}
@@ -94,7 +96,9 @@
 						<td><a href={resolve('/workers')}>{w.name}</a></td>
 						<td><State value={w.state} /></td>
 						<td class="muted">{w.arch}{w.gpu_model ? ` · ${w.gpu_model}` : ''}</td>
-						<td class="muted mono">{(w.capabilities.operations ?? []).join(', ') || '—'}</td>
+						<td class="muted">
+							{(w.capabilities.operations ?? []).map(operation).join(' · ') || '—'}
+						</td>
 						<td class="muted">{ago(w.last_heartbeat_at)}</td>
 					</tr>
 				{/each}

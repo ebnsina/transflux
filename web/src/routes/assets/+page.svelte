@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { api, type Asset } from '$lib/api';
 	import { ago, short } from '$lib/format';
+	import { describe } from '$lib/problem';
 	import State from '$lib/components/State.svelte';
 
 	let assets = $state<Asset[]>([]);
@@ -14,7 +15,7 @@
 			assets = (await api.get<{ assets: Asset[] }>('/v1/assets?limit=100')).assets;
 			error = '';
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
@@ -30,16 +31,16 @@
 			name = '';
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 		creating = false;
 	}
 </script>
 
 <div class="spread">
-	<h1>Assets</h1>
+	<h1>Media</h1>
 	<form class="row" onsubmit={create}>
-		<input type="text" bind:value={name} placeholder="Name for a new asset" />
+		<input type="text" bind:value={name} placeholder="Name your media" />
 		<button class="primary" type="submit" disabled={creating}>Create</button>
 	</form>
 </div>
@@ -48,17 +49,17 @@
 
 <div class="panel">
 	{#if assets.length === 0}
-		<p class="muted">No assets yet.</p>
+		<p class="muted">Nothing here yet. Add some media above.</p>
 	{:else}
 		<table>
 			<thead>
-				<tr><th>Name</th><th>Id</th><th>Status</th><th>Created</th></tr>
+				<tr><th>Name</th><th>Reference</th><th>Status</th><th>Added</th></tr>
 			</thead>
 			<tbody>
 				{#each assets as asset (asset.id)}
 					<tr>
 						<td
-							><a href={resolve('/assets/[id]', { id: asset.id })}>{asset.name ?? '(unnamed)'}</a
+							><a href={resolve('/assets/[id]', { id: asset.id })}>{asset.name ?? 'Untitled'}</a
 							></td
 						>
 						<td class="muted mono">{short(asset.id)}</td>

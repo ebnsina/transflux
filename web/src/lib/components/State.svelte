@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { state } from '$lib/words';
+
 	let { value }: { value: string } = $props();
 
 	// A state's colour should mean the same thing everywhere: green is done,
@@ -29,4 +31,4 @@
 	};
 </script>
 
-<span class="badge {tone[value] ?? ''}">{value.replace(/_/g, ' ')}</span>
+<span class="badge {tone[value] ?? ''}">{state(value)}</span>

@@ -2,6 +2,9 @@
 	import { page } from '$app/state';
 	import { api, type ArtifactSet, type JobDetail } from '$lib/api';
 	import { ago, bytes, seconds, short } from '$lib/format';
+	import { describe } from '$lib/problem';
+	import { check as checkName, operation } from '$lib/words';
+	import { setTrail } from '$lib/breadcrumb.svelte';
 	import State from '$lib/components/State.svelte';
 	import Poll from '$lib/components/Poll.svelte';
 
@@ -18,8 +21,9 @@
 			sets = (await api.get<{ artifact_sets: ArtifactSet[] }>(`/v1/jobs/${id}/artifacts`))
 				.artifact_sets;
 			error = '';
+			setTrail(short(detail.job.id));
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
@@ -34,7 +38,7 @@
 			await api.post(`/v1/jobs/${id}/cancel`);
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = describe(e);
 		}
 	}
 
@@ -55,9 +59,9 @@
 {#if detail}
 	<div class="spread">
 		<div>
-			<h1>Job <span class="mono">{short(detail.job.id)}</span></h1>
+			<h1>Processing <span class="mono">{short(detail.job.id)}</span></h1>
 			<p class="muted">
-				created {ago(detail.job.created_at)}
+				started {ago(detail.job.created_at)}
 				{#if detail.job.finished_at}· finished {ago(detail.job.finished_at)}{/if}
 			</p>
 		</div>
@@ -67,22 +71,28 @@
 		</div>
 	</div>
 
-	<h2>Tasks</h2>
+	<h2>Steps</h2>
 	<div class="panel">
 		<table>
 			<thead>
-				<tr><th>Operation</th><th>State</th><th>Attempts</th><th>Failure</th></tr>
+				<tr><th>Step</th><th>Status</th><th>Tries</th><th>What happened</th></tr>
 			</thead>
 			<tbody>
 				{#each detail.tasks as task (task.id)}
 					<tr>
-						<td>{task.operation}</td>
+						<td>{operation(task.operation)}</td>
 						<td><State value={task.state} /></td>
 						<td class="muted">{task.attempt_count} of {task.max_attempts}</td>
 						<td class="muted">
-							{#if task.failure_reason}
-								<span class="badge bad">{task.failure_class}</span>
-								{task.failure_reason}
+							<!-- The stored reason is written for operators and can contain
+							     internal detail, so the reader gets the shape of the problem
+							     instead. -->
+							{#if task.failure_class === 'permanent_input'}
+								The media could not be used
+							{:else if task.failure_class === 'permanent_config'}
+								This request could not be carried out
+							{:else if task.failure_reason}
+								Interrupted, and we stopped retrying
 							{:else}—{/if}
 						</td>
 					</tr>
@@ -92,19 +102,19 @@
 	</div>
 
 	{#if detail.attempts?.length}
-		<h2>Attempts</h2>
+		<h2>Runs</h2>
 		<div class="panel">
 			<table>
 				<thead>
 					<tr>
-						<th>Operation</th><th>#</th><th>Worker</th><th>State</th>
-						<th>CPU</th><th>Wall</th><th>Peak memory</th><th>Why</th>
+						<th>Step</th><th>Try</th><th>Machine</th><th>Status</th>
+						<th>Processing time</th><th>Elapsed</th><th>Memory used</th><th>Why here</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each detail.attempts as attempt (attempt.id)}
 						<tr>
-							<td>{attempt.operation}</td>
+							<td>{operation(attempt.operation)}</td>
 							<td class="muted">{attempt.attempt_number}</td>
 							<td class="muted">{attempt.worker_name}</td>
 							<td><State value={attempt.state} /></td>
@@ -117,7 +127,7 @@
 										class="link"
 										onclick={() => (openReason = openReason === attempt.id ? null : attempt.id)}
 									>
-										{openReason === attempt.id ? 'hide' : 'show'}
+										{openReason === attempt.id ? 'Hide' : 'Show'}
 									</button>
 								{:else}—{/if}
 							</td>
@@ -139,27 +149,21 @@
 
 	{#if detail.validation?.checks?.length}
 		<h2>
-			Validation {#if failedChecks.length}<span class="badge bad">{failedChecks.length} failed</span
+			Quality checks {#if failedChecks.length}<span class="badge bad"
+					>{failedChecks.length} did not pass</span
 				>{/if}
 		</h2>
 		<div class="panel">
 			<table>
 				<thead>
-					<tr><th>Artifact</th><th>Check</th><th>Status</th><th>Detail</th></tr>
+					<tr><th>Output</th><th>What we checked</th><th>Result</th></tr>
 				</thead>
 				<tbody>
 					{#each detail.validation.checks as check (check.label + check.name)}
 						<tr>
-							<td class="muted">{check.label || '(set)'}</td>
-							<td>{check.name.replace(/_/g, ' ')}</td>
+							<td class="muted">{check.label || 'Overall'}</td>
+							<td>{checkName(check.name)}</td>
 							<td><State value={check.status} /></td>
-							<td class="muted mono">
-								{check.detail && Object.keys(check.detail).length
-									? Object.entries(check.detail)
-											.map(([k, v]) => `${k}=${v}`)
-											.join('  ')
-									: '—'}
-							</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -168,27 +172,26 @@
 	{/if}
 
 	{#each sets as set (set.id)}
-		<h2>Artifacts · version {set.version} <State value={set.state} /></h2>
+		<h2>Results <State value={set.state} /></h2>
 		<div class="panel">
 			{#if set.artifacts.length === 0}
-				<p class="muted">Nothing registered yet.</p>
+				<p class="muted">Nothing has been produced yet.</p>
 			{:else}
 				<table>
 					<thead>
-						<tr><th>Label</th><th>Kind</th><th>Size</th><th>Media</th><th></th></tr>
+						<tr><th>Name</th><th>Size</th><th>Details</th><th></th></tr>
 					</thead>
 					<tbody>
 						{#each set.artifacts as artifact (artifact.id)}
 							<tr>
 								<td class="mono">{artifact.label}</td>
-								<td class="muted">{artifact.kind}</td>
 								<td class="muted">{bytes(artifact.size_bytes)}</td>
 								<td class="muted mono">
 									{#if artifact.media}
 										{artifact.media.width}×{artifact.media.height}
 										{artifact.media.codec}
 										{#if artifact.media.color}
-											<span class="badge warn" style="margin-left:6px">hdr</span>
+											<span class="badge warn" style="margin-left:6px">HDR colour</span>
 										{/if}
 									{:else}—{/if}
 								</td>

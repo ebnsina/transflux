@@ -9,14 +9,25 @@ pre-release and does not yet follow semantic versioning.
 ### Added
 
 - **Dashboard.** A SvelteKit single-page app served alongside the API on one
-  origin: assets with their probed tracks and colour, jobs with their tasks,
-  attempts and validation results, the worker fleet with declared capabilities,
-  and artifact downloads over signed URLs. Upload a source, run a pipeline and
-  watch it finish without leaving the page.
-  - The scheduler's stored explanation for each attempt is shown inline, so
-    "why did this take an hour" is a click rather than a database query.
+  origin: media with its tracks and colour, processing with its steps, runs and
+  quality checks, the machines available to do the work, and downloads over
+  signed URLs. Add a file, start a job and watch it finish without leaving the
+  page.
+  - Grouped sidebar navigation and breadcrumbs, so a detail page says where it
+    sits rather than leaving you to guess.
+  - Written in plain words. The API speaks the domain's language — attempts,
+    leases, artifacts, tenants — because that is what the system is built out
+    of; a person reading a screen does not have to learn any of it.
+  - Errors are never shown raw. Server error text can carry storage keys and
+    internal state, and none of it helps the reader, so the error code chooses
+    the wording and the original is not kept.
+  - Designed pages for 404, 403, 500 and 503 that say what to do next rather
+    than what went wrong internally.
   - Light and dark themes, following the system by default with an explicit
-    choice able to override it.
+    choice able to override it. Depth comes from borders and background steps
+    rather than shadows, which are invisible on a dark ground.
+  - The scheduler's stored reasoning for each run is shown inline, so "why did
+    this take an hour" is a click rather than a database query.
 - `GET /v1/jobs` — list a tenant's recent jobs.
 - `GET /v1/jobs/{id}` now includes `attempts`: every execution with the worker
   that ran it, the scheduler's reasoning, and what it cost in CPU, wall time and
