@@ -32,7 +32,7 @@ rendition back, and survive a worker being killed mid-encode.
 | 1 | Tenancy + API keys + auth middleware + audit | ✅ Cross-tenant resolution and revocation fail in an integration test |
 | 2 | Storage abstraction over S3/MinIO, presign, multipart | ✅ Round trip, presign expiry, resumed multipart and abort against MinIO |
 | 3 | Assets, asset versions, resumable uploads, completion verification (managed sources only) | ✅ Interrupted upload resumes; short parts and size mismatches rejected; no source row exists until verified |
-| 4 | Job/task/attempt tables + state machine | Unit tests for every legal and illegal transition |
+| 4 | Job/task/attempt tables + state machine | ✅ Every ordered state pair checked; illegal moves rejected under row locks; one winner under concurrency |
 | 5 | Worker registry, registration, capabilities, heartbeat, lifecycle | A worker appears ONLINE and goes OFFLINE when it stops heartbeating |
 | 6 | Worker protocol v1 + lease/heartbeat/complete endpoints | A stub worker completes a fake task end to end |
 | 7 | Scheduler: constraints, scoring, leasing, persisted explanations | Capability mismatch is never leased; the explanation is queryable |
