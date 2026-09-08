@@ -10,6 +10,7 @@ func TestLoad(t *testing.T) {
 		t.Setenv("TRANSFLUX_DATABASE_URL", "postgres://x")
 		t.Setenv("TRANSFLUX_S3_BUCKET", "transflux")
 		t.Setenv("TRANSFLUX_WORKER_BOOTSTRAP_TOKEN", "bootstrap-secret")
+		t.Setenv("TRANSFLUX_PLAYBACK_SECRET", "playback-secret")
 	}
 
 	t.Run("requires a database url", func(t *testing.T) {

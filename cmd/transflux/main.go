@@ -31,6 +31,7 @@ import (
 	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/obs"
 	"github.com/ebnsina/transflux/internal/pipeline"
+	"github.com/ebnsina/transflux/internal/playback"
 	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/tenant"
@@ -123,6 +124,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 			Artifacts:         artifact.NewStore(pool, store),
 			Validations:       validate.NewStore(pool),
 			Metrics:           metrics,
+			Playback:          playback.NewSigner(cfg.PlaybackSecret),
+			PlaybackTTL:       cfg.PlaybackTTL,
 			Storage:           store,
 			SourceURLTTL:      cfg.SourceURLTTL,
 			DownloadURLTTL:    cfg.DownloadURLTTL,

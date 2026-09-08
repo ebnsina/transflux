@@ -52,8 +52,9 @@ packaging** — a 4K source produces four renditions across two workers, every
 one checked, HDR preserved on each, then packaged into one set of segments that
 serves both protocols.
 
-Next: **playback authorisation**, without which a package is not playable — the
-manifest is signed but its segments are not.
+Also done: **playback authorisation** — a short-lived link a player can follow
+with no credentials, verified by pointing a real player at it. HLS plays; DASH
+needs a delivery layer, which is outside the boundary.
 
 Remaining: chunked encoding (keyframe-aligned, with documented unsafe cases and
 a whole-file fallback), HEVC + AV1, thumbnails

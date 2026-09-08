@@ -279,6 +279,20 @@ func (s *Store) ForJob(ctx context.Context, tenantID, jobID uuid.UUID) ([]Artifa
 	return s.artifacts(ctx, tenantID, setID)
 }
 
+// Set returns one artifact set, scoped to its tenant.
+func (s *Store) Set(ctx context.Context, tenantID, setID uuid.UUID) (Set, error) {
+	var set Set
+	err := s.pool.QueryRow(ctx, `
+		select id, job_id, version, state, storage_prefix, created_at, completed_at
+		  from artifact_sets where id = $1 and tenant_id = $2`, setID, tenantID,
+	).Scan(&set.ID, &set.JobID, &set.Version, &set.State, &set.Prefix,
+		&set.CreatedAt, &set.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Set{}, ErrNotFound
+	}
+	return set, err
+}
+
 // Get returns one artifact, scoped to its tenant.
 func (s *Store) Get(ctx context.Context, tenantID, id uuid.UUID) (Artifact, error) {
 	var a Artifact

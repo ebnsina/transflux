@@ -8,6 +8,16 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Playback links.** `POST /v1/artifacts/{id}/playback` returns a short-lived
+  link for a streaming playlist. A player follows it with no API key of its own
+  and the stream plays.
+  - The link authorises manifests, which are small and pass through the control
+    plane. Media segments are fetched straight from storage over URLs signed for
+    the occasion, so viewers' bandwidth never does.
+  - Links expire, so one that is shared or leaked stops working. A tampered or
+    forged link is refused, and an expired one says so distinctly from an
+    invalid one.
+  - Only playlists are served, and only within the package the link is for.
 - **Streaming packages.** `pipeline: "stream-h264"` makes the ladder and then
   prepares it for streaming: CMAF segments with an HLS master playlist and a
   DASH manifest, both registered as artifacts.
@@ -228,12 +238,10 @@ pre-release and does not yet follow semantic versioning.
 
 ### Known gaps
 
-- A signed manifest URL does not make a package playable: the segments it
-  references are separate objects and are refused without a signature of their
-  own. Segment-level authorisation belongs to the delivery layer — a CDN with
-  token authentication, or signed cookies — which is outside this system's
-  boundary. A playback authorisation endpoint that hands a player signed
-  manifests is the next piece of work.
+- Playback links serve HLS. DASH manifests use segment templates, which cannot
+  be signed one URL at a time, so playing DASH needs a delivery layer with
+  token authentication — a CDN — which is outside this system's boundary. The
+  DASH manifest is produced and stored; it is delivery that is missing.
 
 ### Notes
 

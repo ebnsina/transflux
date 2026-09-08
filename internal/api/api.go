@@ -18,6 +18,7 @@ import (
 	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/obs"
 	"github.com/ebnsina/transflux/internal/pipeline"
+	"github.com/ebnsina/transflux/internal/playback"
 	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/upload"
@@ -38,6 +39,7 @@ type Deps struct {
 	Artifacts         *artifact.Store
 	Validations       *validate.Store
 	Metrics           *obs.Metrics
+	Playback          *playback.Signer
 	Storage           storage.Store
 	HeartbeatInterval time.Duration
 	LeaseTTL          time.Duration
@@ -47,6 +49,9 @@ type Deps struct {
 	// DownloadURLTTL bounds how long a signed delivery URL lives. Short, so a
 	// leaked link stops working rather than becoming a public mirror.
 	DownloadURLTTL time.Duration
+	// PlaybackTTL bounds a viewing session. Long enough to watch something,
+	// short enough that a shared link stops working.
+	PlaybackTTL time.Duration
 }
 
 type Server struct{ d Deps }
@@ -97,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 	v1.Handle("GET /v1/pipelines", scoped(auth.ScopeJobsRead, s.handleListPipelines))
 	v1.Handle("GET /v1/jobs/{id}/artifacts", scoped(auth.ScopeJobsRead, s.handleListArtifacts))
 	v1.Handle("GET /v1/artifacts/{id}/download", scoped(auth.ScopeJobsRead, s.handleDownloadArtifact))
+	v1.Handle("POST /v1/artifacts/{id}/playback", scoped(auth.ScopeJobsRead, s.handleCreatePlaybackLink))
 
 	v1.Handle("GET /v1/workers", adminScoped(s.handleListWorkers))
 	v1.Handle("GET /v1/workers/{id}", adminScoped(s.handleGetWorker))
@@ -109,6 +115,10 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("/v1/", auth.Middleware(s.d.Auth, unauthorized, serverError)(v1))
 	mux.Handle("/metrics", auth.Middleware(s.d.Auth, unauthorized, serverError)(v1))
+
+	// Playback carries its own authorisation in the link, because a player has
+	// no API key. It is mounted outside /v1 for that reason.
+	mux.HandleFunc("GET /playback/{token}/{file}", s.handlePlayback)
 
 	// The worker protocol authenticates with worker credentials, not API keys,
 	// so it is mounted outside the /v1 tenant surface entirely.

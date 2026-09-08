@@ -44,6 +44,11 @@ type Config struct {
 	// How long a delivery URL lives. Short on purpose: a leaked link should
 	// stop working rather than become a public mirror.
 	DownloadURLTTL time.Duration
+	// PlaybackSecret signs playback links. It is the only thing standing
+	// between a link and the media behind it, so it is required rather than
+	// defaulted.
+	PlaybackSecret string
+	PlaybackTTL    time.Duration
 }
 
 func Load() (Config, error) {
@@ -79,6 +84,12 @@ func Load() (Config, error) {
 	if c.WorkerBootstrapToken == "" {
 		return c, fmt.Errorf("TRANSFLUX_WORKER_BOOTSTRAP_TOKEN is required")
 	}
+
+	c.PlaybackSecret = os.Getenv("TRANSFLUX_PLAYBACK_SECRET")
+	if c.PlaybackSecret == "" {
+		return c, fmt.Errorf("TRANSFLUX_PLAYBACK_SECRET is required")
+	}
+	c.PlaybackTTL = 4 * time.Hour
 	c.HeartbeatInterval = 10 * time.Second
 	c.WorkerStaleAfter = 3 * c.HeartbeatInterval
 	c.LeaseTTL = 60 * time.Second
