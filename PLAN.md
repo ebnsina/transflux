@@ -33,7 +33,7 @@ rendition back, and survive a worker being killed mid-encode.
 | 2 | Storage abstraction over S3/MinIO, presign, multipart | ✅ Round trip, presign expiry, resumed multipart and abort against MinIO |
 | 3 | Assets, asset versions, resumable uploads, completion verification (managed sources only) | ✅ Interrupted upload resumes; short parts and size mismatches rejected; no source row exists until verified |
 | 4 | Job/task/attempt tables + state machine | ✅ Every ordered state pair checked; illegal moves rejected under row locks; one winner under concurrency |
-| 5 | Worker registry, registration, capabilities, heartbeat, lifecycle | A worker appears ONLINE and goes OFFLINE when it stops heartbeating |
+| 5 | Worker registry, registration, capabilities, heartbeat, lifecycle | ✅ Registers online, survives restart with a rotated credential, swept offline after 30s silent |
 | 6 | Worker protocol v1 + lease/heartbeat/complete endpoints | A stub worker completes a fake task end to end |
 | 7 | Scheduler: constraints, scoring, leasing, persisted explanations | Capability mismatch is never leased; the explanation is queryable |
 | 8 | Lease expiry sweeper, retry classification, cancellation propagation | Kill a worker mid-task → requeued, re-run, no duplicate artifact |

@@ -29,6 +29,7 @@ import (
 	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/tenant"
 	"github.com/ebnsina/transflux/internal/upload"
+	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -77,13 +78,22 @@ func run(args []string) error {
 }
 
 func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store storage.Store, log *slog.Logger) error {
+	workers := worker.NewStore(pool, cfg.WorkerBootstrapToken)
+
+	// Take workers offline once their heartbeats stop. Reclaiming the work they
+	// held is a separate mechanism, so a slow network does not abandon work that
+	// is still running.
+	go worker.Sweep(ctx, workers, cfg.HeartbeatInterval, cfg.WorkerStaleAfter, log)
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: api.New(api.Deps{
-			Auth:    auth.NewStore(pool),
-			Ping:    pool.Ping,
-			Assets:  asset.NewStore(pool),
-			Uploads: upload.NewService(pool, store),
+			Auth:              auth.NewStore(pool),
+			Ping:              pool.Ping,
+			Assets:            asset.NewStore(pool),
+			Uploads:           upload.NewService(pool, store),
+			Workers:           workers,
+			HeartbeatInterval: cfg.HeartbeatInterval,
 		}).Handler(),
 	}
 

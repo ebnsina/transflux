@@ -8,6 +8,19 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Worker registry and worker protocol v1.** Workers dial out to the control
+  plane, so a machine behind NAT or in another cloud joins by setting two
+  environment variables — nothing needs a route back to a worker.
+  - `POST /worker/v1/register` — authenticated with
+    `TRANSFLUX_WORKER_BOOTSTRAP_TOKEN`, exchanged immediately for a per-worker
+    credential. A worker declares its hardware, capabilities and per-workload
+    slot capacity; the scheduler gates on those rather than on machine identity.
+  - `POST /worker/v1/heartbeat` — renews liveness, reports utilisation, and
+    returns the worker's state, which is how a drain reaches a worker we cannot
+    dial.
+  - `GET /v1/workers`, `GET /v1/workers/{id}` — fleet view (`admin` scope).
+  - `POST /v1/workers/{id}/state` — drain a worker before maintenance, or return
+    it to service.
 - **Assets and resumable uploads.**
   - `POST /v1/assets` — create an asset and its first version. A repeated
     `external_id` returns `409`, so the caller's own identifier gives them
@@ -64,4 +77,14 @@ pre-release and does not yet follow semantic versioning.
   verified now.
 - A missing or unreachable bucket now fails at startup instead of surfacing as
   a `500` on the first upload. In `dev` the bucket is created automatically.
+- Workers are fleet infrastructure, not tenant resources: one worker serves
+  every tenant, so worker endpoints are `admin`-scoped and the worker protocol
+  sits outside the `/v1` tenant surface entirely. A worker credential carries no
+  tenant and grants no access to media.
+- Re-registering under the same name keeps the worker's id and rotates its
+  credential, so a restart does not add a fleet entry and a leaked credential
+  stops working.
+- A worker is marked `offline` after 30 seconds without a heartbeat. Reclaiming
+  the work it held is a separate mechanism, so a slow network does not abandon
+  work that is still running.
 - No media pipeline yet: probing, encoding and packaging are not implemented.

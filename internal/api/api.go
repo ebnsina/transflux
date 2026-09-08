@@ -10,18 +10,22 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/upload"
+	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
 )
 
 type Deps struct {
-	Auth    auth.Authenticator
-	Ping    func(context.Context) error
-	Assets  *asset.Store
-	Uploads *upload.Service
+	Auth              auth.Authenticator
+	Ping              func(context.Context) error
+	Assets            *asset.Store
+	Uploads           *upload.Service
+	Workers           *worker.Store
+	HeartbeatInterval time.Duration
 }
 
 type Server struct{ d Deps }
@@ -63,7 +67,19 @@ func (s *Server) Handler() http.Handler {
 	v1.Handle("POST /v1/uploads/{id}/complete", scoped(auth.ScopeAssetsWrite, s.handleCompleteUpload))
 	v1.Handle("DELETE /v1/uploads/{id}", scoped(auth.ScopeAssetsWrite, s.handleAbortUpload))
 
+	// The fleet is shared infrastructure, so its endpoints are an operator
+	// concern rather than a tenant one.
+	v1.Handle("GET /v1/workers", adminScoped(s.handleListWorkers))
+	v1.Handle("GET /v1/workers/{id}", adminScoped(s.handleGetWorker))
+	v1.Handle("POST /v1/workers/{id}/state", adminScoped(s.handleSetWorkerState))
+
 	mux.Handle("/v1/", auth.Middleware(s.d.Auth, unauthorized, serverError)(v1))
+
+	// The worker protocol authenticates with worker credentials, not API keys,
+	// so it is mounted outside the /v1 tenant surface entirely.
+	mux.HandleFunc("POST /worker/v1/register", s.handleWorkerRegister)
+	mux.HandleFunc("POST /worker/v1/heartbeat", s.handleWorkerHeartbeat)
+
 	return mux
 }
 

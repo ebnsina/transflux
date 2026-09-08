@@ -21,6 +21,15 @@ type Config struct {
 	LogLevel        slog.Level
 	ShutdownTimeout time.Duration
 	Storage         storage.Config
+
+	// WorkerBootstrapToken authenticates worker registration only. It is
+	// shared across the fleet, so it is exchanged immediately for a per-worker
+	// credential and is never accepted for anything else.
+	WorkerBootstrapToken string
+	HeartbeatInterval    time.Duration
+	// A worker is presumed lost after this long without a heartbeat. Three
+	// missed beats, so one slow tick does not evict a healthy worker.
+	WorkerStaleAfter time.Duration
 }
 
 func Load() (Config, error) {
@@ -50,6 +59,13 @@ func Load() (Config, error) {
 	if c.Storage.Bucket == "" {
 		return c, fmt.Errorf("TRANSFLUX_S3_BUCKET is required")
 	}
+
+	c.WorkerBootstrapToken = os.Getenv("TRANSFLUX_WORKER_BOOTSTRAP_TOKEN")
+	if c.WorkerBootstrapToken == "" {
+		return c, fmt.Errorf("TRANSFLUX_WORKER_BOOTSTRAP_TOKEN is required")
+	}
+	c.HeartbeatInterval = 10 * time.Second
+	c.WorkerStaleAfter = 3 * c.HeartbeatInterval
 
 	lvl := env("TRANSFLUX_LOG_LEVEL", "info")
 	if err := c.LogLevel.UnmarshalText([]byte(strings.ToUpper(lvl))); err != nil {

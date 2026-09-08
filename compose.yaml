@@ -44,6 +44,7 @@ services:
       TRANSFLUX_S3_ACCESS_KEY: ${S3_ACCESS_KEY:-transflux}
       TRANSFLUX_S3_SECRET_KEY: ${S3_SECRET_KEY:-transflux123}
       TRANSFLUX_S3_PATH_STYLE: "true"
+      TRANSFLUX_WORKER_BOOTSTRAP_TOKEN: ${WORKER_BOOTSTRAP_TOKEN:-dev-worker-bootstrap}
     ports: ["${TRANSFLUX_HTTP_PORT:-7080}:8080"]
     depends_on:
       postgres: {condition: service_healthy}
