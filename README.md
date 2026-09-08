@@ -17,10 +17,14 @@ Requires Docker, or a local PostgreSQL 17.
 
 ```sh
 cp .env.example .env
-make up                       # postgres + control plane
-curl localhost:8080/healthz   # liveness  (never touches the database)
-curl localhost:8080/readyz    # readiness (fails when the database is down)
+make up                       # postgres + minio + control plane
+curl localhost:7080/healthz   # liveness  (never touches the database)
+curl localhost:7080/readyz    # readiness (fails when the database is down)
 ```
+
+Published host ports default to 7080 (API), 7432 (Postgres), 7900/7901 (MinIO
+and its console) so the stack does not collide with a local Postgres on 5432 or
+another project on 8080. Override any of them in `.env`.
 
 Tenants are provisioned deliberately — there is no self-serve signup:
 
@@ -29,7 +33,7 @@ docker compose exec control-plane /transflux bootstrap -name "Acme Media"
 # tenant_id:  01a07fc6-...
 # api_key:    tf_live_...        shown once; only its hash is stored
 
-curl -H "Authorization: Bearer $KEY" localhost:8080/v1/me
+curl -H "Authorization: Bearer $KEY" localhost:7080/v1/me
 ```
 
 API keys are 256 bits of CSPRNG output, stored as SHA-256. A password KDF would
@@ -53,9 +57,7 @@ transaction, serialised across instances by an advisory lock.
 
 ```sh
 make test                     # unit tests, no dependencies
-createdb transflux_test
-TRANSFLUX_TEST_DATABASE_URL=postgres://$USER@localhost:5432/transflux_test?sslmode=disable \
-  go test ./...               # adds integration tests
+make up && make test-all      # adds integration tests against the stack
 ```
 
 Integration tests skip with a message when `TRANSFLUX_TEST_DATABASE_URL` is

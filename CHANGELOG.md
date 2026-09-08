@@ -27,7 +27,11 @@ pre-release and does not yet follow semantic versioning.
   (readiness, fails when the database is unreachable).
 - Schema migrations are embedded and applied automatically on boot; no
   migration tool is needed to deploy.
-- Docker Compose stack: control plane, PostgreSQL 17 and MinIO.
+- Docker Compose stack: control plane, PostgreSQL 17 and MinIO. Published host
+  ports default to 7080 (API), 7432 (Postgres) and 7900/7901 (MinIO), chosen to
+  avoid colliding with a local Postgres on 5432 or another service on 8080; all
+  are overridable via `TRANSFLUX_HTTP_PORT`, `TRANSFLUX_PG_PORT`,
+  `TRANSFLUX_S3_PORT` and `TRANSFLUX_S3_CONSOLE_PORT`.
 
 ### Notes
 
