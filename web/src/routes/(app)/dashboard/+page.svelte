@@ -69,7 +69,9 @@
 			<tbody>
 				{#each jobs as job (job.id)}
 					<tr>
-						<td><a class="mono" href={resolve('/jobs/[id]', { id: job.id })}>{short(job.id)}</a></td
+						<td
+							><a class="mono" href={resolve('/(app)/jobs/[id]', { id: job.id })}>{short(job.id)}</a
+							></td
 						>
 						<td><State value={job.state} /></td>
 						<td class="muted">{ago(job.created_at)}</td>
@@ -93,7 +95,7 @@
 			<tbody>
 				{#each workers as w (w.id)}
 					<tr>
-						<td><a href={resolve('/workers')}>{w.name}</a></td>
+						<td><a href={resolve('/(app)/workers')}>{w.name}</a></td>
 						<td><State value={w.state} /></td>
 						<td class="muted">{w.arch}{w.gpu_model ? ` · ${w.gpu_model}` : ''}</td>
 						<td class="muted">

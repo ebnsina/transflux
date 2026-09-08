@@ -47,10 +47,20 @@ func packageTask(ctx context.Context, workDir, ffmpegBin string, raw json.RawMes
 		return Outcome{Result: failure(job.ClassPermanentConfig,
 			fmt.Sprintf("packaging spec is not valid: %v", err))}, nil
 	}
-	if len(spec.Artifacts) == 0 {
+	// Only renditions are packaged. A job's artifacts also include the poster
+	// and the scrubbing strip, and feeding those to a packager as if they were
+	// video is how adding thumbnails breaks streaming.
+	renditions := make([]ValidateArtifact, 0, len(spec.Artifacts))
+	for _, a := range spec.Artifacts {
+		if a.Kind == "" || a.Kind == "rendition" {
+			renditions = append(renditions, a)
+		}
+	}
+	if len(renditions) == 0 {
 		return Outcome{Result: failure(job.ClassPermanentConfig,
 			"there is nothing to package")}, nil
 	}
+	spec.Artifacts = renditions
 	if spec.SegmentSecs <= 0 {
 		spec.SegmentSecs = DefaultSegmentSeconds
 	}

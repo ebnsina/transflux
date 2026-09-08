@@ -39,7 +39,7 @@
 	<p class="code">{page.status}</p>
 	<h1>{shown.title}</h1>
 	<p class="muted">{shown.body}</p>
-	<a class="back" href={resolve('/')}>Back to overview</a>
+	<a class="back" href={resolve('/(app)/dashboard')}>Back to the dashboard</a>
 </section>
 
 <style>

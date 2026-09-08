@@ -59,7 +59,8 @@
 				{#each assets as asset (asset.id)}
 					<tr>
 						<td
-							><a href={resolve('/assets/[id]', { id: asset.id })}>{asset.name ?? 'Untitled'}</a
+							><a href={resolve('/(app)/assets/[id]', { id: asset.id })}
+								>{asset.name ?? 'Untitled'}</a
 							></td
 						>
 						<td class="muted mono">{short(asset.id)}</td>

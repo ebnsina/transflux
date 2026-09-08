@@ -76,6 +76,9 @@ func New(cfg Config, log *slog.Logger) *Agent {
 		"package": func(ctx context.Context, bin string, spec json.RawMessage, up Uploader, p func(Progress)) (Outcome, error) {
 			return packageTask(ctx, cfg.WorkDir, bin, spec, up, p)
 		},
+		"thumbnail": func(ctx context.Context, bin string, spec json.RawMessage, up Uploader, p func(Progress)) (Outcome, error) {
+			return thumbnailTask(ctx, cfg.WorkDir, bin, spec, up, p)
+		},
 	}
 	return a
 }

@@ -28,6 +28,8 @@ type Preset struct {
 	// Package turns the renditions into segments and manifests once they all
 	// exist.
 	Package bool `json:"-"`
+	// Thumbnails makes a poster and a scrubbing strip from the source.
+	Thumbnails bool `json:"-"`
 }
 
 // NeedsProbe reports whether this preset can only be planned once the source
@@ -85,7 +87,8 @@ var presets = map[string]Preset{
 			{Label: "480p_h264", Width: 854, Height: 480, CRF: 24, MaxrateBPS: 1_800_000},
 			{Label: "360p_h264", Width: 640, Height: 360, CRF: 25, MaxrateBPS: 900_000},
 		},
-		Package: true,
+		Package:    true,
+		Thumbnails: true,
 	},
 }
 

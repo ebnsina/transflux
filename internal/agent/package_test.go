@@ -295,3 +295,40 @@ func TestPackageOrdersRenditionsBySize(t *testing.T) {
 		}
 	}
 }
+
+// A job's artifacts include a poster and a scrubbing strip. Feeding those to a
+// packager as if they were video is how adding thumbnails breaks streaming.
+func TestPackageIgnoresArtifactsThatAreNotRenditions(t *testing.T) {
+	arts, cleanup := renditionServer(t, 360, 240)
+	defer cleanup()
+	posterURL, cleanupPoster := serveBytes(t, "poster.jpg", []byte("a still, not a rendition"))
+	defer cleanupPoster()
+
+	for i := range arts {
+		arts[i].Kind = "rendition"
+		arts[i].Height = 360 - i*120
+	}
+	withExtras := append(append([]ValidateArtifact{}, arts...),
+		ValidateArtifact{Label: "poster", Kind: "poster", URL: posterURL},
+		ValidateArtifact{Label: "sprite", Kind: "sprite", URL: posterURL},
+		ValidateArtifact{Label: "sprite_index", Kind: "sprite_index", URL: posterURL},
+	)
+
+	store := newStorageStub(t)
+	outcome, err := packageTask(context.Background(), t.TempDir(), "ffmpeg",
+		packageSpec(t, withExtras), store.uploader(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.Result.Success {
+		t.Fatalf("packaging failed on a set that also held thumbnails: %s",
+			outcome.Result.FailureReason)
+	}
+
+	store.mu.Lock()
+	master := string(store.files["master.m3u8"])
+	store.mu.Unlock()
+	if count := strings.Count(master, "#EXT-X-STREAM-INF"); count != 2 {
+		t.Errorf("the playlist offers %d renditions, want the 2 real ones:\n%s", count, master)
+	}
+}

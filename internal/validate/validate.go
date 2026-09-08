@@ -205,14 +205,19 @@ func CheckIntegrity(label string, wantSize, gotSize int64, wantSum, gotSum []byt
 
 // CheckArtifactCount catches a set that is missing an output entirely, which
 // no per-artifact check can see.
-func CheckArtifactCount(expected, actual int) Check {
+//
+// It counts how many of the expected outputs were found, not how many
+// artifacts exist. A set holds more than the renditions being checked — a
+// poster and a scrubbing strip are artifacts too — and counting everything
+// would make a job fail for producing more than was asked about.
+func CheckArtifactCount(expected, found int) Check {
 	status := Pass
-	if actual != expected {
+	if found != expected {
 		status = Fail
 	}
 	return Check{
 		Category: Technical, Name: "artifact_count", Status: status,
-		Detail: map[string]any{"expected": expected, "actual": actual},
+		Detail: map[string]any{"expected": expected, "found": found},
 	}
 }
 

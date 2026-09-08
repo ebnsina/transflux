@@ -165,9 +165,6 @@ func TestArtifactCount(t *testing.T) {
 	if CheckArtifactCount(2, 1).Status != Fail {
 		t.Error("a set missing an artifact passed")
 	}
-	if CheckArtifactCount(1, 2).Status != Fail {
-		t.Error("a set with an unexpected extra artifact passed")
-	}
 }
 
 func TestReportSummary(t *testing.T) {

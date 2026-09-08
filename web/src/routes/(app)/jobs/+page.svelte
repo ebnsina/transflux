@@ -41,7 +41,9 @@
 			<tbody>
 				{#each jobs as job (job.id)}
 					<tr>
-						<td><a class="mono" href={resolve('/jobs/[id]', { id: job.id })}>{short(job.id)}</a></td
+						<td
+							><a class="mono" href={resolve('/(app)/jobs/[id]', { id: job.id })}>{short(job.id)}</a
+							></td
 						>
 						<td><State value={job.state} /></td>
 						<td class="muted">{ago(job.created_at)}</td>

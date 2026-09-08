@@ -8,6 +8,18 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Posters and scrubbing thumbnails.** Every streaming job now produces a
+  poster and a sprite sheet with a WebVTT index, taken from the source so they
+  neither wait for encoding nor depend on how it turned out.
+  - The poster is chosen from a batch a little way in, because the opening
+    frames of a programme are often black, a logo, or a fade.
+  - The interval between thumbnails stretches with length, so a feature film
+    does not produce a sheet nobody can download.
+  - A playback link serves the sprite index as well as a playlist, with the
+    sheet it points at signed.
+- **A public site.** A landing page at `/` and documentation at `/docs`,
+  including a full endpoint reference and a worked example from upload to
+  playback link. The dashboard moved to `/dashboard`.
 - **Playback links.** `POST /v1/artifacts/{id}/playback` returns a short-lived
   link for a streaming playlist. A player follows it with no API key of its own
   and the stream plays.

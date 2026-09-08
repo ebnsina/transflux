@@ -56,6 +56,9 @@ Also done: **playback authorisation** — a short-lived link a player can follow
 with no credentials, verified by pointing a real player at it. HLS plays; DASH
 needs a delivery layer, which is outside the boundary.
 
+Also done: **posters and scrubbing thumbnails**, and a **public site** with
+documentation for third-party callers.
+
 Remaining: chunked encoding (keyframe-aligned, with documented unsafe cases and
 a whole-file fallback), HEVC + AV1, thumbnails
 and sprites with their WebVTT index, posters, multiple audio tracks, loudness

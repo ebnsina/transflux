@@ -27,6 +27,7 @@ type ValidateSpec struct {
 
 type ValidateArtifact struct {
 	Label        string `json:"label"`
+	Kind         string `json:"kind,omitempty"`
 	URL          string `json:"url"`
 	SizeBytes    int64  `json:"size_bytes"`
 	ChecksumAlgo string `json:"checksum_algo,omitempty"`
@@ -50,16 +51,26 @@ func validateTask(ctx context.Context, workDir, ffprobeBin string, raw json.RawM
 			fmt.Sprintf("validate spec is not valid: %v", err))}, nil
 	}
 
-	report := validate.Report{}
-	// A set missing an output entirely is a failure no per-artifact check can
-	// see, so it is checked before any of them.
-	report.Checks = append(report.Checks,
-		validate.CheckArtifactCount(len(spec.Expect), len(spec.Artifacts)))
-
 	byLabel := make(map[string]ValidateArtifact, len(spec.Artifacts))
 	for _, a := range spec.Artifacts {
 		byLabel[a.Label] = a
 	}
+
+	// How many of the expected outputs are actually there. Counted against the
+	// expectations rather than against everything in the set, which also holds
+	// posters and thumbnails that this task was not asked about.
+	found := 0
+	for _, exp := range spec.Expect {
+		if _, ok := byLabel[exp.Label]; ok {
+			found++
+		}
+	}
+
+	report := validate.Report{}
+	// A set missing an output entirely is a failure no per-artifact check can
+	// see, so it is checked before any of them.
+	report.Checks = append(report.Checks,
+		validate.CheckArtifactCount(len(spec.Expect), found))
 
 	dir, err := os.MkdirTemp(workDir, "validate-")
 	if err != nil {

@@ -233,7 +233,8 @@ func (s *Server) resolveSpec(r *http.Request, a job.Assignment) (json.RawMessage
 				return nil, err
 			}
 			entry := map[string]any{
-				"label": art.Label, "url": url, "size_bytes": art.SizeBytes,
+				"label": art.Label, "kind": art.Kind, "url": url,
+				"size_bytes":    art.SizeBytes,
 				"checksum_algo": art.ChecksumAlgo, "checksum": art.Checksum,
 			}
 			// The recorded shape, so a packager can order renditions by

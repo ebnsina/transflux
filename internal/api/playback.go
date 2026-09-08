@@ -34,8 +34,11 @@ func (s *Server) handleCreatePlaybackLink(w http.ResponseWriter, r *http.Request
 		internalError(w, r, "get artifact", err)
 		return
 	}
-	// Only a playlist can be played. A rendition is a file to download.
-	if art.Kind != "manifest" || !strings.HasSuffix(art.StorageKey, ".m3u8") {
+	// Only a playlist or a scrubbing index is served this way. A rendition is
+	// a file to download.
+	playable := (art.Kind == "manifest" && strings.HasSuffix(art.StorageKey, ".m3u8")) ||
+		art.Kind == "sprite_index"
+	if !playable {
 		writeError(w, http.StatusConflict, "not_playable",
 			"Only a streaming playlist can be played. Download this one instead.")
 		return
@@ -47,8 +50,12 @@ func (s *Server) handleCreatePlaybackLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	file := "master.m3u8"
+	if art.Kind == "sprite_index" {
+		file = "sprite.vtt"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"url":                playback.Path(token, "master.m3u8"),
+		"url":                playback.Path(token, file),
 		"expires_at":         expires,
 		"expires_in_seconds": int(s.d.PlaybackTTL.Seconds()),
 	})
@@ -75,7 +82,11 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	file := r.PathValue("file")
-	if !playback.SafeFile(file) || !strings.HasSuffix(file, ".m3u8") {
+	playlist := strings.HasSuffix(file, ".m3u8")
+	index := strings.HasSuffix(file, ".vtt")
+	// Only the small text files that need rewriting are served here. Media is
+	// fetched from storage directly.
+	if !playback.SafeFile(file) || (!playlist && !index) {
 		notFound(w)
 		return
 	}
@@ -105,14 +116,24 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rewritten, err := playback.RewriteHLS(r.Context(), body, r.PathValue("token"), set.Prefix,
-		s.d.Storage.PresignGet, s.d.PlaybackTTL)
+	var rewritten string
+	if playlist {
+		rewritten, err = playback.RewriteHLS(r.Context(), body, r.PathValue("token"), set.Prefix,
+			s.d.Storage.PresignGet, s.d.PlaybackTTL)
+	} else {
+		rewritten, err = playback.RewriteVTT(r.Context(), body, set.Prefix,
+			s.d.Storage.PresignGet, s.d.PlaybackTTL)
+	}
 	if err != nil {
 		internalError(w, r, "rewrite playlist", err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	contentType := "application/vnd.apple.mpegurl"
+	if index {
+		contentType = "text/vtt"
+	}
+	w.Header().Set("Content-Type", contentType)
 	// The signed URLs inside expire, so a cached copy would outlive them.
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte(rewritten))

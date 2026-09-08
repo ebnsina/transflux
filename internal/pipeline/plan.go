@@ -122,6 +122,22 @@ func Plan(p Preset, sourceKey string, media probe.Result) ([]job.NewTask, error)
 		encodeKeys = append(encodeKeys, "encode-"+rung.Label)
 	}
 
+	// Thumbnails come from the source, so they neither wait for encoding nor
+	// depend on how it turned out. A viewer sees the poster before any video.
+	if p.Thumbnails {
+		thumbSpec, err := json.Marshal(map[string]any{
+			"source_key":  sourceKey,
+			"duration_ms": media.DurationMS,
+		})
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, job.NewTask{
+			Key: "thumbnails", Operation: "thumbnail", Spec: thumbSpec,
+			Requirements: job.Requirements{SlotClass: "thumbnail"},
+		})
+	}
+
 	// Every ladder ends in validation, and the job only succeeds if it passes.
 	// Exit code zero is not success: a truncated upload produces a cheerful
 	// exit and a broken file.

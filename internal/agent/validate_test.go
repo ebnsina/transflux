@@ -220,6 +220,43 @@ func TestUnplayableOutputFailsValidation(t *testing.T) {
 	}
 }
 
+// A set holds posters and thumbnails as well as renditions, and a check about
+// renditions must not fail because other things exist alongside them.
+func TestValidateIgnoresArtifactsItWasNotAskedAbout(t *testing.T) {
+	body := realRendition(t)
+	url, cleanup := serveBytes(t, "r.mp4", body)
+	defer cleanup()
+	posterURL, cleanupPoster := serveBytes(t, "poster.jpg", []byte("not a rendition"))
+	defer cleanupPoster()
+
+	sum := sha256.Sum256(body)
+	spec, err := json.Marshal(ValidateSpec{
+		Expect: []validate.Expectation{{Label: "320p", Codec: "h264"}},
+		Artifacts: []ValidateArtifact{
+			{Label: "320p", URL: url, SizeBytes: int64(len(body)),
+				ChecksumAlgo: "sha256", Checksum: sum[:]},
+			// Registered by another task in the same job.
+			{Label: "poster", URL: posterURL},
+			{Label: "sprite", URL: posterURL},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outcome, err := validateTask(context.Background(), t.TempDir(), "ffprobe", spec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.Result.Success {
+		t.Fatalf("validation failed because of artifacts it was not asked about: %s\n%s",
+			outcome.Result.FailureReason, outcome.Result.Output)
+	}
+	if got := checkStatus(report(t, outcome.Result.Output), "artifact_count"); got != validate.Pass {
+		t.Errorf("artifact_count = %s, want pass", got)
+	}
+}
+
 // A set missing an output entirely is invisible to per-artifact checks.
 func TestMissingArtifactFailsValidation(t *testing.T) {
 	spec, _ := json.Marshal(ValidateSpec{

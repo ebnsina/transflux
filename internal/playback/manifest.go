@@ -106,6 +106,54 @@ func resolve(ctx context.Context, name, token, prefix string, sign URLSigner,
 	return sign(ctx, prefix+"/"+name, ttl)
 }
 
+// RewriteVTT signs the sheet a scrubbing index points at.
+//
+// An index is a list of regions of an image, and that image is a separate
+// object storage will refuse unsigned — so an index delivered on its own shows
+// a viewer nothing.
+func RewriteVTT(ctx context.Context, body, prefix string, sign URLSigner,
+	ttl time.Duration) (string, error) {
+
+	var out strings.Builder
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64<<10), 4<<20)
+
+	signed := map[string]string{}
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// A cue payload here is "<image>#xywh=x,y,w,h"; everything else is
+		// structure and is left alone.
+		name, fragment, isRegion := strings.Cut(strings.TrimSpace(line), "#xywh=")
+		if !isRegion || !SafeFile(name) {
+			out.WriteString(line)
+			out.WriteString("\n")
+			continue
+		}
+
+		url, ok := signed[name]
+		if !ok {
+			var err error
+			// One signature per sheet rather than per cue: a long programme
+			// has hundreds of cues pointing at the same few images.
+			url, err = sign(ctx, prefix+"/"+name, ttl)
+			if err != nil {
+				return "", err
+			}
+			signed[name] = url
+		}
+
+		out.WriteString(url)
+		out.WriteString("#xywh=")
+		out.WriteString(fragment)
+		out.WriteString("\n")
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}
+
 // SafeFile bounds what a manifest, or a request, may name.
 //
 // Manifests are produced by us, but they are also the input to this rewriting,

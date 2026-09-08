@@ -88,7 +88,7 @@
 				asset_version_id: version.id,
 				pipeline
 			});
-			await goto(resolve('/jobs/[id]', { id: created.job.id }));
+			await goto(resolve('/(app)/jobs/[id]', { id: created.job.id }));
 		} catch (e) {
 			error = describe(e);
 		}
