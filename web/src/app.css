@@ -168,7 +168,7 @@ a:hover {
 .sidebar nav {
 	display: flex;
 	flex-direction: column;
-	gap: 22px;
+	gap: 18px;
 }
 .group-title {
 	font-size: 11px;
@@ -177,13 +177,17 @@ a:hover {
 	color: var(--muted);
 	font-weight: 600;
 	font-variation-settings: 'wght' 600;
-	margin: 0 0 6px 8px;
+	margin: 0 0 4px 10px;
 }
 .sidebar nav a {
-	display: block;
+	display: flex;
+	align-items: center;
+	gap: 10px;
 	padding: 8px 10px;
 	border-radius: var(--radius-sm);
 	color: var(--text);
+	font-variation-settings: 'wght' 500;
+	line-height: 1.2;
 }
 .sidebar nav a:hover {
 	background: var(--panel-2);
@@ -191,30 +195,94 @@ a:hover {
 }
 .sidebar nav a.active {
 	background: var(--accent-soft);
-}
-.sidebar nav a.active .item-label {
 	color: var(--accent);
 }
-.item-label {
-	display: block;
-	font-variation-settings: 'wght' 500;
-}
-.item-hint {
-	display: block;
-	font-size: 12px;
+.sidebar nav a :global(svg) {
 	color: var(--muted);
-	line-height: 1.35;
+	flex: none;
+}
+.sidebar nav a.active :global(svg) {
+	color: var(--accent);
 }
 
 .sidebar-foot {
 	margin-top: auto;
-	padding: 14px 8px 0;
+	padding-top: 14px;
 	border-top: 1px solid var(--line);
+	position: relative;
+}
+.account {
 	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	align-items: flex-start;
+	align-items: center;
+	gap: 9px;
+	width: 100%;
+	padding: 9px 10px;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: var(--radius-sm);
+	color: var(--text);
 	font-size: 13px;
+	text-align: left;
+}
+.account:hover:not(:disabled),
+.account.open {
+	background: var(--panel-2);
+	border-color: var(--line);
+}
+.account-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.account :global(svg:last-child) {
+	color: var(--muted);
+	flex: none;
+}
+
+.menu {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	left: 0;
+	right: 0;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 6px;
+	z-index: 30;
+}
+.menu-title {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	margin: 6px 8px 4px;
+	font-variation-settings: 'wght' 600;
+}
+.menu button {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	border-radius: var(--radius-sm);
+	padding: 7px 10px;
+	font-size: 13px;
+	color: var(--text);
+}
+.menu button:hover:not(:disabled) {
+	background: var(--panel-2);
+	border: none;
+}
+.menu button.selected {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+.menu-rule {
+	height: 1px;
+	background: var(--line);
+	margin: 6px 4px;
 }
 
 .content {
@@ -226,7 +294,8 @@ a:hover {
 	display: flex;
 	align-items: center;
 	gap: 14px;
-	padding: 16px 32px;
+	min-height: 57px;
+	padding: 0 32px;
 	border-bottom: 1px solid var(--line);
 	position: sticky;
 	top: 0;
@@ -265,9 +334,9 @@ a:hover {
 }
 
 main {
-	padding: 28px 32px 72px;
-	max-width: 1120px;
+	padding: 26px 32px 72px;
 	width: 100%;
+	min-width: 0;
 }
 
 .centred {
@@ -294,7 +363,10 @@ main {
 	.menu-toggle {
 		display: inline-block;
 	}
-	.topbar,
+	.topbar {
+		padding-left: 18px;
+		padding-right: 18px;
+	}
 	main {
 		padding-left: 18px;
 		padding-right: 18px;
@@ -306,11 +378,14 @@ h1 {
 	font-weight: 700;
 	font-variation-settings: 'wght' 700;
 	letter-spacing: -0.025em;
-	margin: 0 0 6px;
+	margin: 0 0 20px;
+}
+h1 + .muted {
+	margin: -14px 0 20px;
 }
 h2 {
 	font-size: 12px;
-	margin: 32px 0 12px;
+	margin: 34px 0 12px;
 	color: var(--muted);
 	font-weight: 600;
 	font-variation-settings: 'wght' 600;
@@ -334,11 +409,15 @@ h2 {
 	background: var(--panel);
 	border: 1px solid var(--line);
 	border-radius: var(--radius);
-	padding: 6px 18px;
+	padding: 4px 18px;
 	overflow: hidden;
 }
 .panel > p {
-	padding: 12px 0;
+	padding: 14px 0;
+	margin: 0;
+}
+.panel + .panel {
+	margin-top: 12px;
 }
 
 table {
@@ -353,13 +432,18 @@ th {
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: 0.07em;
-	padding: 12px 12px 10px 0;
+	padding: 14px 16px 10px 0;
 	border-bottom: 1px solid var(--line);
+	white-space: nowrap;
+}
+th:last-child,
+td:last-child {
+	padding-right: 0;
 }
 td {
-	padding: 12px 12px 12px 0;
+	padding: 13px 16px 13px 0;
 	border-bottom: 1px solid var(--line);
-	vertical-align: top;
+	vertical-align: middle;
 }
 tr:last-child td {
 	border-bottom: none;
@@ -510,6 +594,13 @@ a:focus-visible {
 	font-variation-settings: 'wght' 700;
 	letter-spacing: -0.03em;
 	line-height: 1.1;
+	/* The figures are what the page is for, so they carry the accent while the
+	   labels around them stay quiet. */
+	color: var(--accent);
+}
+/* A zero is the absence of something, not a result worth highlighting. */
+.stat .value.zero {
+	color: var(--muted);
 }
 .stat .label {
 	color: var(--muted);

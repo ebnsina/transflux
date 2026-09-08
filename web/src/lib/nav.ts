@@ -1,26 +1,28 @@
+import type { Name } from '$lib/components/Icon.svelte';
+
 /**
  * Navigation, grouped by what someone is trying to do rather than by which
  * part of the system serves it.
  */
-export type Item = { href: '/' | '/assets' | '/jobs' | '/workers'; label: string; hint: string };
+export type Item = { href: '/' | '/assets' | '/jobs' | '/workers'; label: string; icon: Name };
 export type Group = { title: string; items: Item[] };
 
 export const groups: Group[] = [
 	{
 		title: 'Overview',
-		items: [{ href: '/', label: 'Dashboard', hint: 'What is happening right now' }]
+		items: [{ href: '/', label: 'Dashboard', icon: 'dashboard' }]
 	},
 	{
 		title: 'Library',
-		items: [{ href: '/assets', label: 'Media', hint: 'Everything you have added' }]
+		items: [{ href: '/assets', label: 'Media', icon: 'media' }]
 	},
 	{
 		title: 'Processing',
-		items: [{ href: '/jobs', label: 'Activity', hint: 'Work in progress and finished' }]
+		items: [{ href: '/jobs', label: 'Activity', icon: 'activity' }]
 	},
 	{
 		title: 'Infrastructure',
-		items: [{ href: '/workers', label: 'Machines', hint: 'What is available to do the work' }]
+		items: [{ href: '/workers', label: 'Machines', icon: 'machines' }]
 	}
 ];
 

@@ -6,8 +6,9 @@
 	import { short } from '$lib/format';
 	import { groups, section } from '$lib/nav';
 	import { currentTrail, setTrail } from '$lib/breadcrumb.svelte';
-	import { apply, label as themeLabel, next, stored, type Theme } from '$lib/theme.svelte';
+	import { apply, label as themeLabel, stored, type Theme } from '$lib/theme.svelte';
 	import Logo from '$lib/components/Logo.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -18,6 +19,7 @@
 	let checking = $state(true);
 	let theme = $state<Theme>('system');
 	let menuOpen = $state(false);
+	let accountOpen = $state(false);
 
 	$effect(() => {
 		theme = stored();
@@ -69,10 +71,28 @@
 		identity = null;
 	}
 
-	function cycleTheme() {
-		theme = next(theme);
-		apply(theme);
+	function chooseTheme(choice: Theme) {
+		theme = choice;
+		apply(choice);
 	}
+
+	const themes: Theme[] = ['system', 'light', 'dark'];
+
+	$effect(() => {
+		if (!accountOpen) return;
+		const dismiss = (event: Event) => {
+			if (!(event.target as HTMLElement)?.closest('.sidebar-foot')) accountOpen = false;
+		};
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') accountOpen = false;
+		};
+		window.addEventListener('click', dismiss, true);
+		window.addEventListener('keydown', onKey);
+		return () => {
+			window.removeEventListener('click', dismiss, true);
+			window.removeEventListener('keydown', onKey);
+		};
+	});
 
 	const active = $derived(section(page.url.pathname));
 	const trail = $derived(currentTrail());
@@ -84,7 +104,9 @@
 	<section class="signin">
 		<div class="signin-head">
 			<Logo size={26} />
-			<button class="icon" onclick={cycleTheme}>{themeLabel(theme)}</button>
+			<button class="icon" onclick={() => chooseTheme(themes[(themes.indexOf(theme) + 1) % 3])}>
+				{themeLabel(theme)}
+			</button>
 		</div>
 		<h1>Sign in</h1>
 		<p class="muted">Enter the access key for your account to continue.</p>
@@ -117,8 +139,8 @@
 								class:active={active?.href === item.href}
 								onclick={() => (menuOpen = false)}
 							>
-								<span class="item-label">{item.label}</span>
-								<span class="item-hint">{item.hint}</span>
+								<Icon name={item.icon} />
+								<span>{item.label}</span>
 							</a>
 						{/each}
 					</div>
@@ -126,8 +148,37 @@
 			</nav>
 
 			<div class="sidebar-foot">
-				<span class="muted">Account {short(identity.tenant_id)}</span>
-				<button class="link" onclick={signOut}>Sign out</button>
+				<!-- Settings that belong to the person rather than to a page live
+				     behind the account, which is where someone looks for them. -->
+				<button
+					class="account"
+					class:open={accountOpen}
+					onclick={() => (accountOpen = !accountOpen)}
+					aria-expanded={accountOpen}
+					aria-haspopup="menu"
+				>
+					<Icon name="account" />
+					<span class="account-name">Account {short(identity.tenant_id)}</span>
+					<Icon name="chevron" />
+				</button>
+
+				{#if accountOpen}
+					<div class="menu" role="menu">
+						<p class="menu-title">Appearance</p>
+						{#each themes as choice (choice)}
+							<button
+								role="menuitemradio"
+								aria-checked={theme === choice}
+								class:selected={theme === choice}
+								onclick={() => chooseTheme(choice)}
+							>
+								{themeLabel(choice)}
+							</button>
+						{/each}
+						<div class="menu-rule"></div>
+						<button role="menuitem" onclick={signOut}>Sign out</button>
+					</div>
+				{/if}
 			</div>
 		</aside>
 
@@ -152,10 +203,6 @@
 						{/if}
 					{/if}
 				</nav>
-
-				<button class="icon" onclick={cycleTheme} title="Theme: {themeLabel(theme)}">
-					{themeLabel(theme)}
-				</button>
 			</header>
 
 			<main>
