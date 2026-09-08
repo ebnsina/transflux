@@ -5,6 +5,8 @@
 --   * money/bytes/durations are explicit units in the column name
 --   * enums are text + CHECK, not pg enums (cheaper to evolve)
 
+create extension if not exists citext;
+
 -- ── tenancy ─────────────────────────────────────────────────────────────
 create table tenants (
   id            uuid primary key,
@@ -44,6 +46,12 @@ create table assets (
   external_id   text,                         -- customer's own id, optional
   name          text,
   status        text not null check (status in ('draft','ready','deleted')),
+  -- 'managed'   : we hold the source; we own its retention and deletion
+  -- 'ephemeral' : created implicitly for a jobs-only caller who brought their
+  --               own storage. Hidden from asset listings by default, and GC
+  --               must never delete its source object — it is not ours.
+  lifecycle     text not null default 'managed'
+                  check (lifecycle in ('managed','ephemeral')),
   metadata      jsonb not null default '{}',
   created_at    timestamptz not null default now(),
   deleted_at    timestamptz,
@@ -63,19 +71,19 @@ create table asset_versions (
   unique (asset_id, version)
 );
 
-create table source_files (
-  id                uuid primary key,
-  tenant_id         uuid not null references tenants,
-  asset_version_id  uuid not null references asset_versions,
-  storage_bucket    text not null,
-  storage_key       text not null,
-  size_bytes        bigint not null,
-  checksum_algo     text not null,            -- 'sha256' | 'crc32c'
-  checksum          bytea not null,
-  content_type      text,
-  verified_at       timestamptz,              -- NULL ⇒ no job may run on it
-  created_at        timestamptz not null default now(),
-  unique (storage_bucket, storage_key)
+-- Customer-owned storage credentials. Encrypted at rest, scoped to one tenant,
+-- never returned by the API and never logged. Preferred delivery to a worker is
+-- a short-lived presigned URL rather than the credential itself.
+create table storage_credentials (
+  id            uuid primary key,
+  tenant_id     uuid not null references tenants,
+  name          text not null,
+  provider      text not null,                -- 's3','gcs','http_bearer'
+  wrapped_secret bytea not null,
+  detail        jsonb not null default '{}',  -- endpoint, region, access key id
+  created_at    timestamptz not null default now(),
+  revoked_at    timestamptz,
+  unique (tenant_id, name)
 );
 
 -- ── uploads ─────────────────────────────────────────────────────────────
@@ -104,6 +112,30 @@ create table upload_parts (
   checksum      bytea,
   uploaded_at   timestamptz not null default now(),
   primary key (upload_id, part_number)        -- duplicate part = idempotent overwrite
+);
+
+create table source_files (
+  id                uuid primary key,
+  tenant_id         uuid not null references tenants,
+  asset_version_id  uuid not null references asset_versions,
+  -- 'managed' sources live in our bucket and are verified at upload completion.
+  -- External sources cannot be verified before a job runs: they are checked at
+  -- fetch time and may fail the first task with permanent_input instead.
+  origin            text not null default 'managed'
+                      check (origin in ('managed','external_url','external_s3')),
+  storage_bucket    text,                     -- managed only
+  storage_key       text,                     -- managed only
+  external_url      text,                     -- external_url only
+  external_ref      jsonb,                    -- external_s3: endpoint, region, bucket, key
+  credential_id     uuid references storage_credentials,
+  size_bytes        bigint,                   -- unknown until fetch for external
+  checksum_algo     text,
+  checksum          bytea,
+  content_type      text,
+  verified_at       timestamptz,              -- managed: NULL ⇒ no job may run on it
+  created_at        timestamptz not null default now(),
+  check ((origin = 'managed') = (storage_key is not null)),
+  unique (storage_bucket, storage_key)
 );
 
 -- ── probe ───────────────────────────────────────────────────────────────
@@ -157,6 +189,10 @@ create table tracks (
   sample_rate_hz    int,
   -- subtitle
   subtitle_format   text,                     -- 'webvtt','srt','ttml','imsc','cea608','cea708'
+  -- ASR output must be labelled: presenting machine captions as authored ones
+  -- is an accessibility problem, not a cosmetic one.
+  is_machine_generated boolean not null default false,
+  asr_model         text,                     -- pinned model version, for reproducibility
   unique (asset_version_id, stream_index)
 );
 create index on tracks (asset_version_id, kind);
@@ -179,6 +215,43 @@ create table pipeline_versions (
   definition    jsonb not null,               -- stages, ladder, packaging, protection
   created_at    timestamptz not null default now(),
   unique (pipeline_id, version)
+);
+
+-- ── workers ─────────────────────────────────────────────────────────────
+create table workers (
+  id                  uuid primary key,
+  name                text not null,
+  hostname            text not null,
+  os                  text not null,
+  arch                text not null,          -- 'amd64','arm64'
+  cpu_model           text,
+  cpu_cores           int  not null,
+  memory_bytes        bigint not null,
+  disk_bytes          bigint not null,
+  gpu_model           text,
+  gpu_memory_bytes    bigint,
+  ffmpeg_version      text not null,
+  protocol_version    int  not null,
+  capabilities        jsonb not null,         -- encoders, decoders, pix_fmts, containers,
+                                              -- packagers, encryption, operations
+  slot_capacity       jsonb not null,         -- {"h264":4,"hevc":2,"av1":1,"probe":8,...}
+  state               text not null check (state in
+                        ('online','draining','offline','unhealthy')),
+  credential_hash     bytea not null,
+  last_heartbeat_at   timestamptz not null default now(),
+  registered_at       timestamptz not null default now()
+);
+create index on workers (state, last_heartbeat_at);
+
+-- current utilisation, updated on heartbeat; separate from the slow-changing row above
+create table worker_resources (
+  worker_id             uuid primary key references workers on delete cascade,
+  cpu_pct               real,
+  memory_used_bytes     bigint,
+  disk_free_bytes       bigint,
+  gpu_pct               real,
+  slots_in_use          jsonb not null default '{}',
+  updated_at            timestamptz not null default now()
 );
 
 -- ── jobs / tasks / attempts ─────────────────────────────────────────────
@@ -206,9 +279,12 @@ create table tasks (
   id              uuid primary key,
   tenant_id       uuid not null references tenants,
   job_id          uuid not null references jobs,
+  -- Operations are the extension point (ADR-012): a new capability is a spec,
+  -- a worker capability gate and an artifact kind — never a new pipeline.
   operation       text not null check (operation in
                     ('probe','plan','encode','package','protect','thumbnail',
-                     'subtitle','audio','validate')),
+                     'subtitle','audio','transcribe','clip','watermark',
+                     'validate')),
   spec            jsonb not null,             -- structured; never a command string
   requirements    jsonb not null,             -- codec, encoder, gpu, memory_bytes, disk_bytes, class
   depends_on      uuid[] not null default '{}',
@@ -276,43 +352,6 @@ create table chunks (
   unique (job_id, chunk_index)
 );
 
--- ── workers ─────────────────────────────────────────────────────────────
-create table workers (
-  id                  uuid primary key,
-  name                text not null,
-  hostname            text not null,
-  os                  text not null,
-  arch                text not null,          -- 'amd64','arm64'
-  cpu_model           text,
-  cpu_cores           int  not null,
-  memory_bytes        bigint not null,
-  disk_bytes          bigint not null,
-  gpu_model           text,
-  gpu_memory_bytes    bigint,
-  ffmpeg_version      text not null,
-  protocol_version    int  not null,
-  capabilities        jsonb not null,         -- encoders, decoders, pix_fmts, containers,
-                                              -- packagers, encryption, operations
-  slot_capacity       jsonb not null,         -- {"h264":4,"hevc":2,"av1":1,"probe":8,...}
-  state               text not null check (state in
-                        ('online','draining','offline','unhealthy')),
-  credential_hash     bytea not null,
-  last_heartbeat_at   timestamptz not null default now(),
-  registered_at       timestamptz not null default now()
-);
-create index on workers (state, last_heartbeat_at);
-
--- current utilisation, updated on heartbeat; separate from the slow-changing row above
-create table worker_resources (
-  worker_id             uuid primary key references workers on delete cascade,
-  cpu_pct               real,
-  memory_used_bytes     bigint,
-  disk_free_bytes       bigint,
-  gpu_pct               real,
-  slots_in_use          jsonb not null default '{}',
-  updated_at            timestamptz not null default now()
-);
-
 -- ── artifacts ───────────────────────────────────────────────────────────
 create table artifact_sets (
   id            uuid primary key,
@@ -333,7 +372,7 @@ create table artifacts (
   task_attempt_id   uuid not null references task_attempts,
   kind              text not null check (kind in
                       ('rendition','segment_set','manifest','thumbnail','sprite',
-                       'poster','subtitle','drm_metadata','log')),
+                       'poster','subtitle','transcript','clip','drm_metadata','log')),
   label             text not null,            -- '1080p_h264', 'hls_master', ...
   storage_key       text not null,
   size_bytes        bigint not null,

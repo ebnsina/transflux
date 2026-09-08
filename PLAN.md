@@ -17,6 +17,8 @@ Answers that shape the plan, recorded so later slices do not relitigate them.
 | DRM | Real, but only once the core is solid | Stays P2. The four-level model, KIDs and key lifecycle are designed now so it is not a rewrite later. |
 | Scale | No numbers yet; "millions" eventually | Do not optimise for a number we do not have. Keep the scheduler stateless and the artifact path immutable so scaling out stays a capacity question. |
 | Codecs | H.264 is enough; leave room | P0 encodes H.264/AAC. Codec is structured config plus a worker capability, so HEVC and AV1 are new profiles and capability gates, not new code paths. |
+| Consumption | Some callers use **assets + jobs**, others **jobs only** against their own storage | One internal model: a jobs-only request creates an ephemeral asset implicitly (ADR-011). Adds SSRF defence and customer-credential handling as hard requirements before external sources ship. |
+| Operations | Thumbnails, transcription, audio normalisation and more are expected | Each is a task operation, not a pipeline (ADR-012). ASR adds worker-side model management and its own slot class. |
 | Pipelines | Built-in presets now, custom later | `pipeline_versions.definition` is validated against known stages; a custom-pipeline API is P1+. |
 
 ## P0 — Foundation
@@ -29,7 +31,7 @@ rendition back, and survive a worker being killed mid-encode.
 | 0 | Repo skeleton, config, Postgres migrations, Compose (control plane + PG + MinIO) | `docker compose up` gives a healthy API and a migrated DB |
 | 1 | Tenancy + API keys + auth middleware + audit | Cross-tenant read attempts fail in an integration test |
 | 2 | Storage abstraction over S3/MinIO, presign, multipart | Round-trip test against MinIO, including a resumed multipart |
-| 3 | Assets, asset versions, resumable uploads, completion verification | Interrupted upload resumes; a size/checksum mismatch is rejected; unverified source cannot start a job |
+| 3 | Assets, asset versions, resumable uploads, completion verification (managed sources only) | Interrupted upload resumes; a size/checksum mismatch is rejected; unverified source cannot start a job |
 | 4 | Job/task/attempt tables + state machine | Unit tests for every legal and illegal transition |
 | 5 | Worker registry, registration, capabilities, heartbeat, lifecycle | A worker appears ONLINE and goes OFFLINE when it stops heartbeating |
 | 6 | Worker protocol v1 + lease/heartbeat/complete endpoints | A stub worker completes a fake task end to end |
@@ -46,12 +48,23 @@ rendition back, and survive a worker being killed mid-encode.
 ## P1 — Production VOD
 Chunked encoding (keyframe-aligned, with documented unsafe cases and a
 whole-file fallback), parallel encode, HEVC + AV1, encoding ladders, thumbnails
-and sprites, posters, multiple audio tracks, subtitle tracks, CMAF/HLS/DASH
-packaging, media QC beyond technical validation, signed delivery URLs,
-media encryption, DRM-aware packaging, HDR preservation, admin UI (ADR-010).
+and sprites with their WebVTT index, posters, multiple audio tracks, loudness
+normalisation to EBU R128, subtitle conversion, CMAF/HLS/DASH packaging, media
+QC beyond technical validation, signed delivery URLs, media encryption,
+DRM-aware packaging, HDR preservation, admin UI (ADR-010).
 
-## P2 — Premium protection
-Widevine / FairPlay / PlayReady integration, key management and KMS, KID/PSSH
+Two P1 items carry their own prerequisites:
+
+- **External sources** (jobs-only callers, ADR-011) do not ship until the SSRF
+  defences in ARCHITECTURE §11 exist and are tested against a metadata-endpoint
+  target, and customer credentials are encrypted at rest.
+- **Transcription** (ADR-012) needs whisper.cpp packaged into an ASR worker
+  image, a pinned model version in the task spec, its own slot class, and
+  machine-generated labelling on the produced tracks.
+
+## P2 — Premium protection and editing
+Clips, subclips, concatenation, animated previews, audio-only extraction,
+visible watermarking. Widevine / FairPlay / PlayReady integration, key management and KMS, KID/PSSH
 handling, key rotation, DRM policies, security levels and HDCP, offline DRM,
 watermarking integration point.
 

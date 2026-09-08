@@ -97,7 +97,10 @@ needs — the worker never queries the domain.
 
 The core distinction the schema must not blur:
 
-- **Asset** is media. Immutable source. Never mutated by a job.
+- **Asset** is media. Immutable source. Never mutated by a job. A source may be
+  ours (`managed`) or the customer's own bucket or URL (`external`); a
+  jobs-only caller gets an `ephemeral` asset created implicitly, so there is one
+  internal model rather than two code paths (ADR-011).
 - **Job** is one operation against one asset version. Many jobs per asset.
 - **Pipeline** describes what must happen. **Task** is one executable unit.
 - **Task attempt** is one execution of a task. Tasks have many attempts.
@@ -245,11 +248,19 @@ defaults once we have them (§ TESTING).
 ## 8. Media pipeline
 
 ```
-Upload ─► verify ─► Probe ─► Plan ─► [Encode ×N] ─► Package ─► Protect ─► Validate ─► ArtifactSet complete
-                                     [Thumbnail]
-                                     [Subtitle]
-                                     [Audio ×N]
+Source ─► fetch/verify ─► Probe ─► Plan ─► [Encode ×N] ─► Package ─► Protect ─► Validate ─► ArtifactSet complete
+  managed upload                            [Thumbnail]   [Transcribe]
+  or external URL/bucket                    [Subtitle]    [Clip]
+                                            [Audio ×N]    [Watermark]
 ```
+
+Every stage above is a **task operation** (ADR-012): a structured spec, a worker
+capability gate and an artifact kind. Adding thumbnails, transcription or audio
+normalisation touches the operation enum, one worker executor and the planner —
+never the scheduler, the lease protocol, the state machine or the artifact
+model. Transcription is the one operation with a new dimension: a pinned ASR
+model is a worker capability with its own slot class, since it is GPU-hungry and
+must not be counted against encode slots.
 
 - **Plan** is a control-plane task, not a worker task: it reads the probe
   result and the requested ladder, and expands the pipeline into concrete
@@ -347,6 +358,8 @@ Threat model summary (full: `docs/SECURITY.md`, to be written alongside P0).
 | Cross-tenant access | `tenant_id` on every scoped query, enforced at the repository layer, plus an integration test suite that attempts cross-tenant reads on every endpoint. |
 | Key leakage | Wrapped at rest, memory-only in workers, redaction in the log layer, never in specs persisted to disk, never in audit events. |
 | Upload/API abuse | Per-tenant quotas: storage, concurrent jobs, upload rate, request rate. |
+| **SSRF via customer-supplied source URLs** | Scheme allowlist (https, s3); resolve DNS then pin the IP for the connection, defeating rebinding; reject private, loopback, link-local and CGNAT ranges, re-checked after every redirect; bounded redirects; response size cap; fetch runs on a worker whose egress is restricted to public destinations. |
+| Customer storage credentials | Encrypted at rest, tenant-scoped, never logged or returned by the API; delivered to workers as short-lived presigned URLs where the provider allows. |
 
 The control plane never invokes FFmpeg. That is the single most valuable
 isolation property in the system.
@@ -457,3 +470,5 @@ packaging model).
 | 008 | **Docker Compose** first; orchestrator-agnostic binaries |
 | 009 | **DRM-aware, not a DRM vendor**; pluggable key/DRM providers |
 | 010 | **Admin UI deferred**; API-first, Svelte + Vite SPA at P1 |
+| 011 | **Bring-your-own-storage**; jobs-only callers get an implicit ephemeral asset |
+| 012 | **Operations are the extension point**; ASR via whisper.cpp subprocess |
