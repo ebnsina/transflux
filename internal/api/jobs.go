@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
@@ -108,6 +109,28 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"job": created})
 }
 
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	p, _ := auth.FromContext(r.Context())
+
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 200 {
+			writeError(w, http.StatusBadRequest, "invalid_request",
+				"limit must be an integer between 1 and 200.")
+			return
+		}
+		limit = n
+	}
+
+	jobs, err := s.d.Jobs.List(r.Context(), p.TenantID, limit)
+	if err != nil {
+		internalError(w, r, "list jobs", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.FromContext(r.Context())
 	id, ok := pathUUID(r, "id")
@@ -132,6 +155,13 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := map[string]any{"job": j, "tasks": tasks}
+
+	// Every execution, with the scheduler's reasoning and what it cost. This
+	// is what makes "why did this take an hour" a query rather than an
+	// investigation.
+	if attempts, err := s.d.Jobs.Attempts(r.Context(), p.TenantID, id); err == nil {
+		body["attempts"] = attempts
+	}
 	// What was checked, and what it said. A failed job should not require
 	// reading worker logs to find out why.
 	if report, err := s.d.Validations.ForJob(r.Context(), p.TenantID, id); err == nil &&

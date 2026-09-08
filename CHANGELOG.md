@@ -8,6 +8,19 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Dashboard.** A SvelteKit single-page app served alongside the API on one
+  origin: assets with their probed tracks and colour, jobs with their tasks,
+  attempts and validation results, the worker fleet with declared capabilities,
+  and artifact downloads over signed URLs. Upload a source, run a pipeline and
+  watch it finish without leaving the page.
+  - The scheduler's stored explanation for each attempt is shown inline, so
+    "why did this take an hour" is a click rather than a database query.
+  - Light and dark themes, following the system by default with an explicit
+    choice able to override it.
+- `GET /v1/jobs` — list a tenant's recent jobs.
+- `GET /v1/jobs/{id}` now includes `attempts`: every execution with the worker
+  that ran it, the scheduler's reasoning, and what it cost in CPU, wall time and
+  peak memory.
 - **Observability.**
   - `GET /metrics` — Prometheus metrics, behind an `admin` key. Request counts
     and latency by route, queue depth by operation and state, worker counts by

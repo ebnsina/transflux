@@ -17,7 +17,8 @@ Requires Docker, or a local PostgreSQL 17.
 
 ```sh
 cp .env.example .env
-make up                       # postgres + minio + control plane
+make up                       # postgres + minio + control plane + worker + dashboard
+open http://localhost:7000    # the dashboard
 curl localhost:7080/healthz   # liveness  (never touches the database)
 curl localhost:7080/readyz    # readiness (fails when the database is down)
 ```
@@ -92,6 +93,7 @@ throwaway database.
 ## Layout
 
 ```
+web/                 SvelteKit dashboard (static build, served by nginx)
 cmd/transflux/       control plane binary and the bootstrap subcommand
 cmd/transflux-worker/ worker binary (data plane)
 internal/agent/      worker internals: capability detection, task loop,

@@ -91,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	// The fleet is shared infrastructure, so its endpoints are an operator
 	// concern rather than a tenant one.
 	v1.Handle("POST /v1/jobs", scoped(auth.ScopeJobsWrite, s.handleCreateJob))
+	v1.Handle("GET /v1/jobs", scoped(auth.ScopeJobsRead, s.handleListJobs))
 	v1.Handle("GET /v1/jobs/{id}", scoped(auth.ScopeJobsRead, s.handleGetJob))
 	v1.Handle("POST /v1/jobs/{id}/cancel", scoped(auth.ScopeJobsWrite, s.handleCancelJob))
 	v1.Handle("GET /v1/pipelines", scoped(auth.ScopeJobsRead, s.handleListPipelines))

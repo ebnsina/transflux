@@ -38,6 +38,9 @@ services:
       TRANSFLUX_LOG_LEVEL: debug
       TRANSFLUX_S3_ENDPOINT: http://minio:9000
       # Presigned URLs are handed to clients outside this network.
+      # Signed for the origin a browser uses. Storage is not proxied through
+      # the dashboard: SigV4 covers the request path, so stripping a prefix on
+      # the way through would invalidate every signature.
       TRANSFLUX_S3_PUBLIC_ENDPOINT: http://localhost:${TRANSFLUX_S3_PORT:-7900}
       # Workers are on this network; customers are not.
       TRANSFLUX_S3_WORKER_ENDPOINT: http://minio:9000
@@ -51,6 +54,17 @@ services:
     ports: ["${TRANSFLUX_HTTP_PORT:-7080}:8080"]
     depends_on:
       postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+
+  # The dashboard, and the single origin the browser talks to: it serves the
+  # static app and proxies the API and storage, so there is no CORS to keep in
+  # step between development and production.
+  web:
+    build:
+      context: ./web
+    ports: ["${TRANSFLUX_WEB_PORT:-7000}:80"]
+    depends_on:
+      control-plane: {condition: service_started}
       minio: {condition: service_healthy}
 
   # A real worker, running the pinned FFmpeg build rather than whatever is

@@ -1,36 +1,48 @@
-# ADR-010 — Admin UI: deferred; Svelte + Vite SPA when built
+# ADR-010 — Admin UI: SvelteKit as a static single-page app
 
-Status: accepted (build at P1)
+Status: accepted (supersedes the deferral and the plain-Svelte leaning)
 
 ## Context
 The frontend is an internal administration and observability surface: assets,
-jobs, tasks, attempts, worker fleet, scheduling explanations. Authenticated,
-internal, no SEO, no public traffic. It is not a customer-facing product.
+jobs, tasks, attempts, worker fleet, artifacts and scheduling explanations.
+Authenticated, internal, no SEO, no public traffic.
+
+It was deferred through P0 because the domain model moved in nearly every
+slice — task specs became typed JSON, artifacts appeared, then validation — and
+a dashboard built early would have been rebuilt three times. That reason has
+now expired: the model is stable and everything a UI needs is in the API.
 
 ## Decision
-No frontend in P0 — the API is the operational surface. When built at P1, it is
-a plain **Svelte + Vite** SPA served as static files behind the same reverse
-proxy.
+**SvelteKit** with **`adapter-static`** in single-page mode, served as static
+files by the same nginx that proxies the API.
 
 ## Why
-- Building a dashboard against a domain model that will move for months means
-  building it twice. Everything the UI needs must exist in the API regardless,
-  so API-first keeps the UI a client and never a special case.
-- Svelte + Vite is less machinery than the alternatives for this job: no VDOM
-  runtime, stores and transitions in the framework rather than in dependencies,
-  smaller bundle, less boilerplate per component. The output is a directory of
-  static assets — no server runtime to deploy or operate.
+- SvelteKit is what the team asked for, and it brings routing, layouts, typed
+  route resolution and a scaffold (`sv create`, `sv add`) that is maintained
+  rather than assembled by hand.
+- `adapter-static` keeps the property the earlier decision valued: the build is
+  a directory of files. There is no server runtime to deploy, no SSR to reason
+  about, and nothing new to operate.
+- One origin serves the app and proxies the API, so the browser never makes a
+  cross-origin request. There is no CORS configuration that could differ
+  between development and production.
 
 ## Consequences
-- P0 operability comes from the API, structured logs and metrics.
-- TanStack Query and Table have Svelte adapters; TanStack **Router** does not
-  (React/Solid only), so routing is `svelte-routing` or hand-rolled. Acceptable
-  for an admin SPA with a shallow route tree.
-- Component library, if one is wanted, is shadcn-svelte rather than shadcn.
+- SvelteKit options live in `vite.config.ts`. When the Vite plugin is given
+  options, `svelte.config.js` is ignored entirely — having both is a trap that
+  fails silently, which is why there is only one.
+- The API key is held in `localStorage`. This is an operator tool served as
+  static files with no session server; a cookie would imply one that does not
+  exist.
+- Storage is not proxied through the dashboard origin. SigV4 signs the request
+  path, so stripping a prefix would invalidate every presigned URL. The browser
+  uploads to storage directly, which is the same path a customer's own client
+  takes.
+- Adding SSR later means changing an adapter, not rewriting the app.
 
 ## Rejected
-- **SvelteKit** — ships a server we have no use for on an authenticated
-  internal tool with no SSR or SEO requirement.
-- **Next.js** — same server objection, more of it.
-- **React + Vite** — perfectly workable and the larger ecosystem, but more
-  runtime and more boilerplate for no benefit this UI can spend.
+- **Plain Svelte + Vite** — the earlier leaning. It avoids a server, but
+  `adapter-static` avoids one too, and doing without SvelteKit means
+  hand-rolling routing and losing the official scaffolding.
+- **Next.js** — a server we have no use for, and a second language ecosystem to
+  keep current.

@@ -168,6 +168,85 @@ func (s *Store) Get(ctx context.Context, tenantID, jobID uuid.UUID) (Job, error)
 	return j, err
 }
 
+// List returns a tenant's recent jobs, newest first.
+func (s *Store) List(ctx context.Context, tenantID uuid.UUID, limit int) ([]Job, error) {
+	rows, err := s.pool.Query(ctx, `
+		select id, asset_version_id, state, priority, failure_reason,
+		       created_at, started_at, finished_at
+		  from jobs where tenant_id = $1 order by created_at desc limit $2`,
+		tenantID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	jobs := []Job{}
+	for rows.Next() {
+		var j Job
+		if err := rows.Scan(&j.ID, &j.AssetVersionID, &j.State, &j.Priority,
+			&j.FailureReason, &j.CreatedAt, &j.StartedAt, &j.FinishedAt); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+// Attempt is one execution of a task, with the scheduler's reasoning and what
+// it cost.
+type Attempt struct {
+	ID              uuid.UUID  `json:"id"`
+	TaskID          uuid.UUID  `json:"task_id"`
+	Operation       string     `json:"operation"`
+	AttemptNumber   int        `json:"attempt_number"`
+	WorkerName      string     `json:"worker_name"`
+	State           string     `json:"state"`
+	ScheduleReason  string     `json:"schedule_reason,omitempty"`
+	ProgressPct     *float32   `json:"progress_pct,omitempty"`
+	CPUSeconds      *float64   `json:"cpu_seconds,omitempty"`
+	WallSeconds     *float64   `json:"wall_seconds,omitempty"`
+	PeakMemoryBytes *int64     `json:"peak_memory_bytes,omitempty"`
+	BytesOut        *int64     `json:"bytes_out,omitempty"`
+	FailureClass    *string    `json:"failure_class,omitempty"`
+	FailureReason   *string    `json:"failure_reason,omitempty"`
+	LeasedAt        time.Time  `json:"leased_at"`
+	FinishedAt      *time.Time `json:"finished_at,omitempty"`
+}
+
+// Attempts returns every execution of a job's tasks.
+//
+// This is where the scheduler's stored explanation surfaces: "why did this take
+// an hour" should be a query rather than an investigation.
+func (s *Store) Attempts(ctx context.Context, tenantID, jobID uuid.UUID) ([]Attempt, error) {
+	rows, err := s.pool.Query(ctx, `
+		select a.id, a.task_id, t.operation, a.attempt_number, w.name, a.state,
+		       a.schedule_reason, a.progress_pct, a.cpu_seconds, a.wall_seconds,
+		       a.peak_memory_bytes, a.bytes_out, a.failure_class, a.failure_reason,
+		       a.leased_at, a.finished_at
+		  from task_attempts a
+		  join tasks t on t.id = a.task_id
+		  join workers w on w.id = a.worker_id
+		 where t.job_id = $1 and a.tenant_id = $2
+		 order by a.leased_at`, jobID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	attempts := []Attempt{}
+	for rows.Next() {
+		var a Attempt
+		if err := rows.Scan(&a.ID, &a.TaskID, &a.Operation, &a.AttemptNumber, &a.WorkerName,
+			&a.State, &a.ScheduleReason, &a.ProgressPct, &a.CPUSeconds, &a.WallSeconds,
+			&a.PeakMemoryBytes, &a.BytesOut, &a.FailureClass, &a.FailureReason,
+			&a.LeasedAt, &a.FinishedAt); err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, a)
+	}
+	return attempts, rows.Err()
+}
+
 func (s *Store) Tasks(ctx context.Context, tenantID, jobID uuid.UUID) ([]Task, error) {
 	rows, err := s.pool.Query(ctx, `
 		select id, job_id, operation, state, depends_on, priority,
