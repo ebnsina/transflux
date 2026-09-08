@@ -8,6 +8,10 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **A player in the dashboard.** A finished streaming job gets a Watch button.
+  The player follows a playback link with no key of its own, lists every
+  rendition, and lets you pick one by hand or leave it automatic — with the size
+  it actually chose shown, since on automatic that changes with the connection.
 - **Posters and scrubbing thumbnails.** Every streaming job now produces a
   poster and a sprite sheet with a WebVTT index, taken from the source so they
   neither wait for encoding nor depend on how it turned out.

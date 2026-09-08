@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { api, type ArtifactSet, type JobDetail } from '$lib/api';
 	import { ago, bytes, seconds, short } from '$lib/format';
 	import { describe } from '$lib/problem';
@@ -50,6 +51,12 @@
 	const failedChecks = $derived(
 		(detail?.validation?.checks ?? []).filter((c) => c.status === 'fail')
 	);
+
+	// Only a finished package can be watched: a set still being built has
+	// segments the playlist refers to but storage does not have yet.
+	const streamable = $derived(
+		sets.some((s) => s.state === 'complete' && s.artifacts.some((a) => a.label === 'hls_master'))
+	);
 </script>
 
 <Poll {active} {load} />
@@ -67,6 +74,9 @@
 		</div>
 		<div class="row">
 			<State value={detail.job.state} />
+			{#if streamable}
+				<a class="play" href={resolve('/(app)/play/[id]', { id })}>Watch</a>
+			{/if}
 			{#if active}<button onclick={cancel}>Cancel</button>{/if}
 		</div>
 	</div>
@@ -209,3 +219,18 @@
 {:else if !error}
 	<p class="muted">Loading…</p>
 {/if}
+
+<style>
+	.play {
+		background: var(--accent);
+		color: var(--accent-contrast);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius-sm);
+		padding: 8px 16px;
+		font-variation-settings: 'wght' 600;
+	}
+	.play:hover {
+		text-decoration: none;
+		filter: brightness(1.06);
+	}
+</style>
