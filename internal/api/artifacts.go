@@ -56,6 +56,54 @@ func (s *Server) handleRegisterArtifact(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// handleWorkerUploadURL mints an upload URL for one file of a task's output.
+//
+// A packager produces files whose names it only discovers as it runs — a
+// manifest, an init segment and a chunk per rendition per interval — so they
+// cannot all be signed in advance. The control plane still decides where they
+// go: the worker names a path relative to its own task, and the key is built
+// here. A worker never chooses an absolute key, and never holds a storage
+// credential.
+func (s *Server) handleWorkerUploadURL(w http.ResponseWriter, r *http.Request) {
+	wk, attemptID, ok := s.workerAttempt(w, r)
+	if !ok {
+		return
+	}
+	ctx, err := s.d.Jobs.AuthorizeAttempt(r.Context(), attemptID, wk.ID)
+	if errors.Is(err, job.ErrStaleAttempt) {
+		staleAttempt(w)
+		return
+	}
+	if err != nil {
+		internalError(w, r, "authorize attempt", err)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	key, err := storage.JobOutputKey(ctx.TenantID, ctx.JobID, 1, req.Path)
+	if errors.Is(err, storage.ErrBadKey) {
+		writeError(w, http.StatusBadRequest, "invalid_path", err.Error())
+		return
+	}
+	if err != nil {
+		internalError(w, r, "build output key", err)
+		return
+	}
+
+	url, err := s.d.Storage.PresignPutForWorker(r.Context(), key, s.d.SourceURLTTL)
+	if err != nil {
+		internalError(w, r, "sign upload url", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"url": url, "storage_key": key})
+}
+
 func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.FromContext(r.Context())
 	id, ok := pathUUID(r, "id")

@@ -117,6 +117,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /worker/v1/lease", s.handleWorkerLease)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/started", s.handleWorkerStarted)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/progress", s.handleWorkerProgress)
+	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/upload-url", s.handleWorkerUploadURL)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/artifacts", s.handleRegisterArtifact)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/complete", s.handleWorkerComplete)
 

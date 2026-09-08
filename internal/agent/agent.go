@@ -26,7 +26,8 @@ type Outcome struct {
 // Executor runs one kind of task. A failure it can describe is returned as an
 // unsuccessful Result; only something that stopped it from trying at all is
 // returned as an error.
-type Executor func(ctx context.Context, bin string, spec json.RawMessage, onProgress func(Progress)) (Outcome, error)
+type Executor func(ctx context.Context, bin string, spec json.RawMessage,
+	upload Uploader, onProgress func(Progress)) (Outcome, error)
 
 type Config struct {
 	ControlPlaneURL string
@@ -62,15 +63,18 @@ func New(cfg Config, log *slog.Logger) *Agent {
 		slots:  map[string]int{},
 	}
 	a.executors = map[string]Executor{
-		"probe": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
+		"probe": func(ctx context.Context, _ string, spec json.RawMessage, _ Uploader, p func(Progress)) (Outcome, error) {
 			res, err := probeTask(ctx, cfg.FFprobeBin, spec, p)
 			return Outcome{Result: res}, err
 		},
-		"encode": func(ctx context.Context, bin string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
+		"encode": func(ctx context.Context, bin string, spec json.RawMessage, _ Uploader, p func(Progress)) (Outcome, error) {
 			return encodeTask(ctx, cfg.WorkDir, bin, spec, p)
 		},
-		"validate": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
+		"validate": func(ctx context.Context, _ string, spec json.RawMessage, _ Uploader, p func(Progress)) (Outcome, error) {
 			return validateTask(ctx, cfg.WorkDir, cfg.FFprobeBin, spec, p)
+		},
+		"package": func(ctx context.Context, bin string, spec json.RawMessage, up Uploader, p func(Progress)) (Outcome, error) {
+			return packageTask(ctx, cfg.WorkDir, bin, spec, up, p)
 		},
 	}
 	return a
@@ -230,8 +234,14 @@ func (a *Agent) execute(ctx context.Context, as job.Assignment) {
 	}, log)
 
 	started := time.Now()
+	// Destinations are requested through the control plane, so a worker never
+	// chooses where its output lands.
+	upload := func(ctx context.Context, path string) (string, string, error) {
+		return a.client.UploadURL(ctx, as.AttemptID, path)
+	}
+
 	total := sourceDuration(as.Spec)
-	outcome, err := exec(runCtx, a.cfg.FFmpegBin, as.Spec, func(p Progress) {
+	outcome, err := exec(runCtx, a.cfg.FFmpegBin, as.Spec, upload, func(p Progress) {
 		progress.Lock()
 		progress.pct = Percent(p.OutTime, total)
 		progress.Unlock()

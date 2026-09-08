@@ -81,6 +81,18 @@ func (c *Client) Progress(ctx context.Context, attemptID uuid.UUID, pct float32)
 	return out.Cancel, err
 }
 
+// UploadURL asks where one output file should go. The worker names a path
+// relative to its own task and never chooses an absolute location.
+func (c *Client) UploadURL(ctx context.Context, attemptID uuid.UUID, path string) (url, key string, err error) {
+	var out struct {
+		URL        string `json:"url"`
+		StorageKey string `json:"storage_key"`
+	}
+	err = c.do(ctx, http.MethodPost, "/worker/v1/attempts/"+attemptID.String()+"/upload-url",
+		c.credential, map[string]string{"path": path}, &out)
+	return out.URL, out.StorageKey, err
+}
+
 // RegisterArtifact records one output. Registering before completing means a
 // set is never closed with an artifact missing from it.
 func (c *Client) RegisterArtifact(ctx context.Context, attemptID uuid.UUID, reg artifact.Registration) error {

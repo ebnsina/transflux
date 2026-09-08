@@ -8,6 +8,17 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Streaming packages.** `pipeline: "stream-h264"` makes the ladder and then
+  prepares it for streaming: CMAF segments with an HLS master playlist and a
+  DASH manifest, both registered as artifacts.
+  - One set of segments serves both protocols, so nothing is stored twice.
+  - The renditions are copied rather than re-encoded. That is possible because
+    the ladder writes keyframes on a fixed grid, which is also what lets a
+    player switch quality mid-stream.
+  - Audio is carried once and shared between renditions, so changing video
+    quality does not re-fetch the sound.
+  - Renditions are listed largest first, so a player's first choice is the best
+    one it can sustain.
 - **Encoding ladders.** `pipeline: "ladder-h264"` produces 1080p, 720p, 480p and
   360p versions so playback can adapt to the connection. Each is encoded
   independently, so they run on different machines at the same time, and every
@@ -214,6 +225,15 @@ pre-release and does not yet follow semantic versioning.
   the dashboard.
 - `docs/TESTING.md` lists every way the system is expected to break and the test
   that proves it recovers.
+
+### Known gaps
+
+- A signed manifest URL does not make a package playable: the segments it
+  references are separate objects and are refused without a signature of their
+  own. Segment-level authorisation belongs to the delivery layer — a CDN with
+  token authentication, or signed cookies — which is outside this system's
+  boundary. A playback authorisation endpoint that hands a player signed
+  manifests is the next piece of work.
 
 ### Notes
 

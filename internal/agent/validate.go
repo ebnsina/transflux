@@ -31,6 +31,10 @@ type ValidateArtifact struct {
 	SizeBytes    int64  `json:"size_bytes"`
 	ChecksumAlgo string `json:"checksum_algo,omitempty"`
 	Checksum     []byte `json:"checksum,omitempty"`
+	// Width and Height come from what was registered, so packaging can order
+	// renditions by picture size rather than by the name they happen to have.
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
 }
 
 // validateTask downloads every output and checks it is what was asked for.

@@ -25,6 +25,9 @@ type Preset struct {
 	// built from the source, so a rung never asks to upscale.
 	Tasks  []job.NewTask `json:"-"`
 	Ladder []Rung        `json:"-"`
+	// Package turns the renditions into segments and manifests once they all
+	// exist.
+	Package bool `json:"-"`
 }
 
 // NeedsProbe reports whether this preset can only be planned once the source
@@ -70,6 +73,19 @@ var presets = map[string]Preset{
 			{Label: "480p_h264", Width: 854, Height: 480, CRF: 24, MaxrateBPS: 1_800_000},
 			{Label: "360p_h264", Width: 640, Height: 360, CRF: 25, MaxrateBPS: 900_000},
 		},
+	},
+	// The ladder, then packaged for streaming. Packaging waits for every
+	// rendition because a manifest that lists one is not adaptive.
+	"stream-h264": {
+		Name:        "stream-h264",
+		Description: "Make several sizes and prepare them for streaming.",
+		Ladder: []Rung{
+			{Label: "1080p_h264", Width: 1920, Height: 1080, CRF: 22, MaxrateBPS: 8_000_000},
+			{Label: "720p_h264", Width: 1280, Height: 720, CRF: 23, MaxrateBPS: 4_000_000},
+			{Label: "480p_h264", Width: 854, Height: 480, CRF: 24, MaxrateBPS: 1_800_000},
+			{Label: "360p_h264", Width: 640, Height: 360, CRF: 25, MaxrateBPS: 900_000},
+		},
+		Package: true,
 	},
 }
 

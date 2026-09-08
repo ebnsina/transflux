@@ -37,6 +37,29 @@ func JobArtifactKey(tenant, job uuid.UUID, setVersion int, label string) (string
 	return fmt.Sprintf("t/%s/jobs/%s/v%d/%s", tenant, job, setVersion, safe), nil
 }
 
+// JobOutputKey locates one file of a job's output, named by a path relative to
+// the job's own prefix.
+//
+// Each segment of the path is validated, so a worker cannot climb out of its
+// job's area however it names a file. The prefix itself is built from
+// identifiers we generate, never from anything a worker sends.
+func JobOutputKey(tenant, job uuid.UUID, setVersion int, relative string) (string, error) {
+	if relative == "" || len(relative) > 512 {
+		return "", fmt.Errorf("%w: path must be 1-512 characters", ErrBadKey)
+	}
+	parts := strings.Split(relative, "/")
+	if len(parts) > 4 {
+		return "", fmt.Errorf("%w: path is too deeply nested", ErrBadKey)
+	}
+	for _, part := range parts {
+		if _, err := Segment(part); err != nil {
+			return "", err
+		}
+	}
+	return fmt.Sprintf("t/%s/jobs/%s/v%d/%s", tenant, job, setVersion,
+		strings.Join(parts, "/")), nil
+}
+
 // UploadKey is where a multipart upload accumulates before it is verified and
 // promoted to a source. Kept separate so an abandoned upload is trivially
 // identifiable by prefix during garbage collection.

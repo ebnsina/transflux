@@ -47,8 +47,13 @@ rendition back, and survive a worker being killed mid-encode.
 
 ## P1 — Production VOD
 
-Done: **encoding ladders** and **parallel encode** — a 4K source produces four
-renditions across two workers, every one checked, HDR preserved on each.
+Done: **encoding ladders**, **parallel encode**, and **CMAF/HLS/DASH
+packaging** — a 4K source produces four renditions across two workers, every
+one checked, HDR preserved on each, then packaged into one set of segments that
+serves both protocols.
+
+Next: **playback authorisation**, without which a package is not playable — the
+manifest is signed but its segments are not.
 
 Remaining: chunked encoding (keyframe-aligned, with documented unsafe cases and
 a whole-file fallback), HEVC + AV1, thumbnails

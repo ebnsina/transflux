@@ -11,6 +11,12 @@ import (
 	"github.com/ebnsina/transflux/internal/validate"
 )
 
+// segmentSeconds is both the keyframe interval renditions are encoded with and
+// the length of the segments they are cut into. They have to match: a segment
+// starts at a keyframe, and a player switching rendition mid-stream relies on
+// every rendition having one at the same instant.
+const segmentSeconds = 2
+
 // Plan turns a preset into the concrete task graph for one source.
 //
 // A ladder is planned against what the source actually is: a rung never asks
@@ -58,9 +64,9 @@ func Plan(p Preset, sourceKey string, media probe.Result) ([]job.NewTask, error)
 				MaxrateBPS:  rung.MaxrateBPS,
 				Preset:      "medium",
 				PixelFormat: "yuv420p",
-				// Two seconds is the usual segment length, and segments must
-				// begin on a keyframe.
-				KeyframeIntervalSec: 2,
+				// Segments must begin on a keyframe, so the keyframe interval
+				// and the segment length are the same number.
+				KeyframeIntervalSec: segmentSeconds,
 			},
 		}
 
@@ -119,7 +125,9 @@ func Plan(p Preset, sourceKey string, media probe.Result) ([]job.NewTask, error)
 	// Every ladder ends in validation, and the job only succeeds if it passes.
 	// Exit code zero is not success: a truncated upload produces a cheerful
 	// exit and a broken file.
-	validateSpec, err := json.Marshal(map[string]any{"expect": expectations})
+	validateSpec, err := json.Marshal(map[string]any{
+		"expect": expectations, "needs_artifacts": true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +140,26 @@ func Plan(p Preset, sourceKey string, media probe.Result) ([]job.NewTask, error)
 		// would be marked failed.
 		MaxAttempts: 3,
 	})
+
+	if p.Package {
+		// Packaging waits for validation as well as the encodes: there is no
+		// point building manifests around renditions that turned out to be
+		// wrong.
+		packageSpec, err := json.Marshal(map[string]any{
+			"needs_artifacts": true,
+			"segment_seconds": segmentSeconds,
+		})
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, job.NewTask{
+			Key:         "package",
+			Operation:   "package",
+			Spec:        packageSpec,
+			DependsOn:   append(append([]string{}, encodeKeys...), "validate"),
+			MaxAttempts: 3,
+		})
+	}
 
 	return tasks, nil
 }

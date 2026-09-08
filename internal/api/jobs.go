@@ -217,10 +217,11 @@ func (s *Server) resolveSpec(r *http.Request, a job.Assignment) (json.RawMessage
 		fields["input_url"] = url
 	}
 
-	// A validate task is given the artifacts that were actually registered,
-	// rather than the ones the plan expected: the difference between the two
-	// is exactly what it is there to notice.
-	if _, wantsArtifacts := fields["expect"]; wantsArtifacts {
+	// A task that works on earlier outputs is given the artifacts that were
+	// actually registered, rather than the ones the plan expected: for
+	// validation the difference between the two is exactly what it is there to
+	// notice, and for packaging it is what makes it package what exists.
+	if wants, _ := fields["needs_artifacts"].(bool); wants {
 		registered, err := s.d.Artifacts.ForJob(r.Context(), a.TenantID, a.JobID)
 		if err != nil {
 			return nil, err
@@ -231,10 +232,20 @@ func (s *Server) resolveSpec(r *http.Request, a job.Assignment) (json.RawMessage
 			if err != nil {
 				return nil, err
 			}
-			list = append(list, map[string]any{
+			entry := map[string]any{
 				"label": art.Label, "url": url, "size_bytes": art.SizeBytes,
 				"checksum_algo": art.ChecksumAlgo, "checksum": art.Checksum,
-			})
+			}
+			// The recorded shape, so a packager can order renditions by
+			// picture size rather than guessing from the label.
+			var media struct {
+				Width  int `json:"width"`
+				Height int `json:"height"`
+			}
+			if len(art.Media) > 0 && json.Unmarshal(art.Media, &media) == nil {
+				entry["width"], entry["height"] = media.Width, media.Height
+			}
+			list = append(list, entry)
 		}
 		fields["artifacts"] = list
 	}
