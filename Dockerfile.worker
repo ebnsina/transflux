@@ -1,0 +1,24 @@
+# The worker's FFmpeg is pinned by the base image tag. This build is the
+# reference: a developer's local FFmpeg is usually newer and will accept flags
+# and emit output that this one does not, so behaviour is decided here.
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/transflux-worker ./cmd/transflux-worker
+
+FROM alpine:3.21
+# alpine:3.21 ships ffmpeg 6.1.x. Changing the base image tag changes the
+# media stack, so treat it as a deliberate upgrade with a test run behind it.
+RUN apk add --no-cache ffmpeg ca-certificates \
+ && adduser -D -u 10001 transflux \
+ && mkdir -p /var/lib/transflux && chown transflux /var/lib/transflux
+
+COPY --from=build /out/transflux-worker /usr/local/bin/transflux-worker
+
+# Media parsing is the largest attack surface in the system and the input is
+# untrusted, so it does not run as root.
+USER transflux
+WORKDIR /var/lib/transflux
+ENTRYPOINT ["transflux-worker"]

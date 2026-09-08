@@ -24,8 +24,14 @@ worker binary only.
 - Progress and metrics come from parsing `-progress` output — structured
   key/value, not stderr scraping.
 - Per-invocation process overhead is negligible against encode durations.
-- Version pinning matters: the worker reports its FFmpeg version and build
-  configuration as a capability, and the control plane can require a minimum.
+- **The deployed build is the reference, not the developer's.** The worker
+  image pins FFmpeg by its base image tag, and a local install is usually much
+  newer — it will accept flags and emit output the deployed build does not, so
+  code that works on a laptop can fail on the fleet. The worker reports its
+  version as a capability, refuses to start below a supported floor, and tests
+  that shell out skip rather than fail on an unsupported local build. Changing
+  the base image tag changes the media stack and is a deliberate upgrade with a
+  test run behind it.
 - Where FFmpeg's packager proves insufficient (some DRM/CMAF signalling), a
   dedicated packager may be added as another subprocess behind the same task
   interface. Not a rewrite.

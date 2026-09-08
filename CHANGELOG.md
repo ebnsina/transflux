@@ -8,6 +8,23 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **`transflux-worker`, the worker binary.** Deployed independently of the
+  control plane; it needs only an outbound route to it — no inbound
+  connectivity, no orchestrator, and no database or storage credentials of its
+  own. Configure with `TRANSFLUX_CONTROL_PLANE_URL` and
+  `TRANSFLUX_WORKER_BOOTSTRAP_TOKEN`; everything else is detected.
+  - Capabilities are discovered by asking FFmpeg what it supports, rather than
+    declared in config that drifts the moment FFmpeg is upgraded.
+  - A worker only advertises operations it can actually execute, so the
+    scheduler never sends work that fails on arrival.
+  - `TRANSFLUX_WORKER_SLOTS` overrides per-class capacity; the default is
+    deliberately conservative and meant to be replaced by measurement.
+  - Cancelling a job stops the media tool within one progress interval, killing
+    its whole process group — an abandoned encode would otherwise keep
+    consuming CPU and writing output.
+  - The worker image pins FFmpeg by its base image tag, so behaviour is decided
+    by the deployed build rather than by whatever a developer has installed.
+    The worker refuses to start on an unsupported version.
 - **Worker registry and worker protocol v1.** Workers dial out to the control
   plane, so a machine behind NAT or in another cloud joins by setting two
   environment variables — nothing needs a route back to a worker.
@@ -63,10 +80,14 @@ pre-release and does not yet follow semantic versioning.
   (readiness, fails when the database is unreachable).
 - Schema migrations are embedded and applied automatically on boot; no
   migration tool is needed to deploy.
-- `TRANSFLUX_S3_PUBLIC_ENDPOINT` — the storage endpoint clients and workers can
-  reach, when it differs from the one the control plane uses. Presigned URLs are
-  signed against it. Required when the control plane reaches storage over a
-  private network, as it does inside Docker.
+- `TRANSFLUX_S3_PUBLIC_ENDPOINT` — the storage endpoint **clients** can reach,
+  when it differs from the one the control plane uses. Presigned URLs for
+  customers are signed against it. Required when the control plane reaches
+  storage over a private network, as it does inside Docker.
+- `TRANSFLUX_S3_WORKER_ENDPOINT` — the storage endpoint **workers** can reach.
+  Workers usually sit inside the network with storage while customers are
+  outside, so the URL signed for a worker is not the one signed for a customer.
+  Defaults to the public endpoint.
 - Docker Compose stack: control plane, PostgreSQL 17 and MinIO. Published host
   ports default to 7080 (API), 7432 (Postgres) and 7900/7901 (MinIO), chosen to
   avoid colliding with a local Postgres on 5432 or another service on 8080; all

@@ -37,7 +37,7 @@ rendition back, and survive a worker being killed mid-encode.
 | 6 | Worker protocol v1 + lease/heartbeat/complete endpoints | ✅ A stub worker leased, started, reported progress and completed a two-task graph over HTTP |
 | 7 | Scheduler: constraints, scoring, leasing, persisted explanations | ✅ Seven constraint classes each proven to exclude; explanation stored per attempt. API exposure lands with the jobs API |
 | 8 | Lease expiry sweeper, retry classification, cancellation propagation | ✅ Killed a worker mid-task on the live stack: reclaimed, re-run by another worker, the dead one's late report refused with 409 |
-| 9 | Worker binary: task loop, FFmpeg subprocess supervision, progress parsing, process-group kill | Cancellation kills FFmpeg within one heartbeat |
+| 9 | Worker binary: task loop, FFmpeg subprocess supervision, progress parsing, process-group kill | ✅ Cancel kills FFmpeg in <1s with no stray processes; real worker registers 206 detected encoders against the live stack |
 | 10 | Probe task (ffprobe → tracks, colour/HDR fields populated) | Probe of an HDR sample does not report SDR |
 | 11 | Encode task: structured config → argv, H.264 + AAC | Argv construction is unit-tested, including rejection of unknown vocabulary |
 | 12 | Artifact registration (idempotent, lease-bound), artifact sets | A stale attempt cannot register an artifact |

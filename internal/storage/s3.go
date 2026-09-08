@@ -23,6 +23,11 @@ type Config struct {
 	// failure only shows up at upload time, not at boot. Empty means Endpoint
 	// is publicly reachable.
 	PublicEndpoint string
+	// WorkerEndpoint is what WORKERS can reach, when that differs again.
+	// Workers usually sit inside the network with storage while clients are
+	// outside, so the URL we sign for a worker is not the one we sign for a
+	// customer. Empty falls back to PublicEndpoint.
+	WorkerEndpoint string
 	Region         string
 	Bucket         string
 	AccessKey      string
@@ -31,9 +36,10 @@ type Config struct {
 }
 
 type S3Store struct {
-	client  *s3.Client
-	presign *s3.PresignClient
-	bucket  string
+	client        *s3.Client
+	presign       *s3.PresignClient
+	presignWorker *s3.PresignClient
+	bucket        string
 }
 
 var _ Store = (*S3Store)(nil)
@@ -70,7 +76,17 @@ func NewS3(ctx context.Context, c Config) (*S3Store, error) {
 		presignVia = newClient(c.PublicEndpoint)
 	}
 
-	return &S3Store{client: client, presign: s3.NewPresignClient(presignVia), bucket: c.Bucket}, nil
+	presignWorkerVia := presignVia
+	if c.WorkerEndpoint != "" && c.WorkerEndpoint != c.PublicEndpoint {
+		presignWorkerVia = newClient(c.WorkerEndpoint)
+	}
+
+	return &S3Store{
+		client:        client,
+		presign:       s3.NewPresignClient(presignVia),
+		presignWorker: s3.NewPresignClient(presignWorkerVia),
+		bucket:        c.Bucket,
+	}, nil
 }
 
 // Verify checks the bucket is reachable, and creates it when create is set.
@@ -152,6 +168,17 @@ func (s *S3Store) PresignGet(ctx context.Context, key string, ttl time.Duration)
 func (s *S3Store) PresignPut(ctx context.Context, key string, ttl time.Duration) (string, error) {
 	req, err := s.presign.PresignPutObject(ctx,
 		&s3.PutObjectInput{Bucket: &s.bucket, Key: &key}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", mapErr(err)
+	}
+	return req.URL, nil
+}
+
+// PresignGetForWorker signs a URL for a worker rather than a customer. Media
+// is fetched by workers over the network they are actually on.
+func (s *S3Store) PresignGetForWorker(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	req, err := s.presignWorker.PresignGetObject(ctx,
+		&s3.GetObjectInput{Bucket: &s.bucket, Key: &key}, s3.WithPresignExpires(ttl))
 	if err != nil {
 		return "", mapErr(err)
 	}

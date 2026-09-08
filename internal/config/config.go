@@ -58,6 +58,7 @@ func Load() (Config, error) {
 	c.Storage = storage.Config{
 		Endpoint:       os.Getenv("TRANSFLUX_S3_ENDPOINT"), // empty means real AWS S3
 		PublicEndpoint: os.Getenv("TRANSFLUX_S3_PUBLIC_ENDPOINT"),
+		WorkerEndpoint: os.Getenv("TRANSFLUX_S3_WORKER_ENDPOINT"),
 		Region:         env("TRANSFLUX_S3_REGION", "us-east-1"),
 		Bucket:         os.Getenv("TRANSFLUX_S3_BUCKET"),
 		AccessKey:      os.Getenv("TRANSFLUX_S3_ACCESS_KEY"),

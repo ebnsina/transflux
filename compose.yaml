@@ -39,6 +39,8 @@ services:
       TRANSFLUX_S3_ENDPOINT: http://minio:9000
       # Presigned URLs are handed to clients outside this network.
       TRANSFLUX_S3_PUBLIC_ENDPOINT: http://localhost:${TRANSFLUX_S3_PORT:-7900}
+      # Workers are on this network; customers are not.
+      TRANSFLUX_S3_WORKER_ENDPOINT: http://minio:9000
       TRANSFLUX_S3_REGION: us-east-1
       TRANSFLUX_S3_BUCKET: transflux
       TRANSFLUX_S3_ACCESS_KEY: ${S3_ACCESS_KEY:-transflux}
@@ -50,6 +52,21 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       minio: {condition: service_healthy}
+
+  # A real worker, running the pinned FFmpeg build rather than whatever is
+  # installed on the developer's machine.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      TRANSFLUX_CONTROL_PLANE_URL: http://control-plane:8080
+      TRANSFLUX_WORKER_BOOTSTRAP_TOKEN: ${WORKER_BOOTSTRAP_TOKEN:-dev-worker-bootstrap}
+      TRANSFLUX_WORKER_NAME: ${TRANSFLUX_WORKER_NAME:-worker-1}
+      TRANSFLUX_WORKER_DIR: /var/lib/transflux
+    depends_on:
+      control-plane: {condition: service_started}
+    restart: unless-stopped
 
 volumes:
   pgdata:

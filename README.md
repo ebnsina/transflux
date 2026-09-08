@@ -93,6 +93,9 @@ throwaway database.
 
 ```
 cmd/transflux/       control plane binary and the bootstrap subcommand
+cmd/transflux-worker/ worker binary (data plane)
+internal/agent/      worker internals: capability detection, task loop,
+                     FFmpeg supervision, probing
 internal/api/        HTTP surface, routing, error envelope
 internal/auth/       API keys, authentication, scopes
 internal/tenant/     tenants and quotas

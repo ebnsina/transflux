@@ -45,6 +45,9 @@ type Store interface {
 	// bytes through the control plane.
 	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
 	PresignPut(ctx context.Context, key string, ttl time.Duration) (string, error)
+	// PresignGetForWorker signs for the network workers are on, which is often
+	// not the one customers are on.
+	PresignGetForWorker(ctx context.Context, key string, ttl time.Duration) (string, error)
 
 	// Multipart is the resumable-upload primitive; we do not reinvent it.
 	CreateMultipart(ctx context.Context, key, contentType string) (uploadID string, err error)

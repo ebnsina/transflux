@@ -41,6 +41,10 @@ type Result struct {
 	FailureReason string       `json:"failure_reason,omitempty"`
 	Metrics       Metrics      `json:"metrics"`
 	LogStorageKey string       `json:"log_storage_key,omitempty"`
+	// Output is whatever the operation produced that is not an artifact — a
+	// probe's findings, for instance. Kept verbatim so a later change of mind
+	// about which fields matter does not mean re-running the work.
+	Output json.RawMessage `json:"output,omitempty"`
 }
 
 // Metrics is per-attempt resource accounting, which is what makes
@@ -124,13 +128,14 @@ func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res
 			update task_attempts set state = $2, finished_at = now(), progress_pct = $3,
 			       cpu_seconds = $4, wall_seconds = $5, peak_memory_bytes = $6,
 			       gpu_seconds = $7, bytes_in = $8, bytes_out = $9,
-			       failure_class = $10, failure_reason = $11, log_storage_key = $12
+			       failure_class = $10, failure_reason = $11, log_storage_key = $12,
+			       output = $13
 			 where id = $1`,
 			attemptID, string(attemptTo), completionPct(res.Success),
 			res.Metrics.CPUSeconds, res.Metrics.WallSeconds, res.Metrics.PeakMemoryBytes,
 			res.Metrics.GPUSeconds, res.Metrics.BytesIn, res.Metrics.BytesOut,
 			nullable(string(res.FailureClass)), nullable(res.FailureReason),
-			nullable(res.LogStorageKey)); err != nil {
+			nullable(res.LogStorageKey), nullJSON(res.Output)); err != nil {
 			return err
 		}
 
@@ -230,6 +235,15 @@ func (s *Store) withAttempt(ctx context.Context, attemptID, workerID uuid.UUID,
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// nullJSON keeps an absent output NULL rather than the JSON literal "null",
+// so "no output" and "output was null" stay distinguishable.
+func nullJSON(raw json.RawMessage) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	return []byte(raw)
 }
 
 func completionPct(success bool) *float32 {
