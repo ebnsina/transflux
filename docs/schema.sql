@@ -29,15 +29,16 @@ create table api_keys (
   id            uuid primary key,
   tenant_id     uuid not null references tenants,
   name          text not null,
-  key_hash      bytea not null,               -- argon2id; plaintext shown once
-  key_prefix    text not null,                -- for identification in the UI
+  key_hash      bytea not null,               -- sha256 of the token; shown once
+  key_prefix    text not null,                -- display only, not unique
   scopes        text[] not null default '{}',
   last_used_at  timestamptz,
   expires_at    timestamptz,
   revoked_at    timestamptz,
   created_at    timestamptz not null default now()
 );
-create index on api_keys (key_prefix) where revoked_at is null;
+create unique index on api_keys (key_hash);
+create index on api_keys (key_prefix);
 
 -- ── assets ──────────────────────────────────────────────────────────────
 create table assets (

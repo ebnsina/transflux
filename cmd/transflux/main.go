@@ -2,35 +2,47 @@
 //
 // It never invokes FFmpeg. Media runs in transflux-worker (ADR-004), which is
 // the isolation property the whole design leans on.
+//
+// Usage:
+//
+//	transflux                            run the control plane
+//	transflux bootstrap -name "Acme"     create a tenant and print one admin key
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/ebnsina/transflux/internal/api"
+	"github.com/ebnsina/transflux/internal/audit"
+	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/config"
 	"github.com/ebnsina/transflux/internal/db"
+	"github.com/ebnsina/transflux/internal/tenant"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		slog.Error("control plane exited", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	slog.SetDefault(log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -46,7 +58,17 @@ func run() error {
 		return err
 	}
 
-	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: routes(pool.Ping)}
+	if len(args) > 0 && args[0] == "bootstrap" {
+		return bootstrap(ctx, pool, cfg.Env, args[1:])
+	}
+	return serve(ctx, cfg, pool, log)
+}
+
+func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) error {
+	srv := &http.Server{
+		Addr:    cfg.HTTPAddr,
+		Handler: api.New(auth.NewStore(pool), pool.Ping).Handler(),
+	}
 
 	errc := make(chan error, 1)
 	go func() {
@@ -70,26 +92,49 @@ func run() error {
 	return srv.Shutdown(shutdownCtx)
 }
 
-// routes takes the readiness probe as a function rather than a pool so the
-// handlers stay testable without a database.
-func routes(ping func(context.Context) error) http.Handler {
-	mux := http.NewServeMux()
+// bootstrap creates the first tenant and its admin key. There is no self-serve
+// signup: tenants are provisioned deliberately.
+func bootstrap(ctx context.Context, pool *pgxpool.Pool, env string, args []string) error {
+	fs := flag.NewFlagSet("bootstrap", flag.ContinueOnError)
+	name := fs.String("name", "", "tenant name (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *name == "" {
+		fs.Usage()
+		return errors.New("bootstrap: -name is required")
+	}
 
-	// Liveness: the process is up. Never touches the database, so a database
-	// blip does not get the container killed and restarted into the same blip.
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok\n"))
+	keyEnv := "live"
+	if env == "dev" {
+		keyEnv = "test"
+	}
+
+	t, err := tenant.NewStore(pool).Create(ctx, *name)
+	if err != nil {
+		return err
+	}
+	key, keyID, err := auth.NewStore(pool).Issue(ctx, t.ID, "bootstrap", keyEnv,
+		[]string{auth.ScopeAdmin}, nil)
+	if err != nil {
+		return err
+	}
+
+	rec := audit.NewRecorder(pool)
+	rec.Record(ctx, audit.Event{
+		TenantID: &t.ID, ActorType: "system", Action: "tenant.created",
+		SubjectType: "tenant", SubjectID: &t.ID,
+		Detail: map[string]any{"name": t.Name},
+	})
+	rec.Record(ctx, audit.Event{
+		TenantID: &t.ID, ActorType: "system", Action: "api_key.issued",
+		SubjectType: "api_key", SubjectID: &keyID,
+		Detail: map[string]any{"name": "bootstrap", "scopes": []string{auth.ScopeAdmin}},
 	})
 
-	// Readiness: dependencies are usable, so take me out of rotation if not.
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := ping(r.Context()); err != nil {
-			slog.WarnContext(r.Context(), "readiness check failed", "err", err)
-			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		w.Write([]byte("ok\n"))
-	})
-
-	return mux
+	// Printed to stdout exactly once. Only its hash is stored; there is no
+	// recovery path, by design.
+	fmt.Printf("tenant_id:  %s\napi_key:    %s\n\nStore the key now — it is not recoverable.\n",
+		t.ID, key.Secret)
+	return nil
 }

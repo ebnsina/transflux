@@ -8,8 +8,8 @@ the boundary and `docs/adr/` for why each major choice was made.
 
 ## Status
 
-P0, slice 0 of 16 (`PLAN.md`): control plane skeleton, config, migrations,
-health endpoints. No media pipeline yet.
+P0, slice 1 of 16 (`PLAN.md`): control plane skeleton, migrations, tenancy,
+API-key authentication and audit. No media pipeline yet.
 
 ## Running
 
@@ -21,6 +21,22 @@ make up                       # postgres + control plane
 curl localhost:8080/healthz   # liveness  (never touches the database)
 curl localhost:8080/readyz    # readiness (fails when the database is down)
 ```
+
+Tenants are provisioned deliberately — there is no self-serve signup:
+
+```sh
+docker compose exec control-plane /transflux bootstrap -name "Acme Media"
+# tenant_id:  01a07fc6-...
+# api_key:    tf_live_...        shown once; only its hash is stored
+
+curl -H "Authorization: Bearer $KEY" localhost:8080/v1/me
+```
+
+API keys are 256 bits of CSPRNG output, stored as SHA-256. A password KDF would
+be the wrong tool: argon2 exists to slow brute force of low-entropy secrets, and
+would only add latency to every authenticated request. Every authentication
+failure — unknown, malformed, revoked, expired, suspended tenant — returns the
+same 401, so a caller cannot probe which.
 
 Against a local Postgres instead:
 
@@ -49,7 +65,11 @@ throwaway database.
 ## Layout
 
 ```
-cmd/transflux/       control plane binary
+cmd/transflux/       control plane binary and the bootstrap subcommand
+internal/api/        HTTP surface, routing, error envelope
+internal/auth/       API keys, authentication, scopes
+internal/tenant/     tenants and quotas
+internal/audit/      append-only audit trail, redaction
 internal/config/     environment configuration
 internal/db/         pool + embedded forward-only migrations
 docs/adr/            architecture decision records

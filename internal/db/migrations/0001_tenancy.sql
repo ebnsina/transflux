@@ -28,8 +28,11 @@ create table api_keys (
     id           uuid primary key,
     tenant_id    uuid not null references tenants,
     name         text not null,
-    -- key_prefix identifies the key in a UI and narrows the hash comparison;
-    -- key_hash is argon2id. The plaintext key is shown exactly once, at creation.
+    -- key_hash is sha256 of the whole token, and is the lookup key. A password
+    -- KDF would be wrong here: argon2 exists to slow brute force of low-entropy
+    -- secrets, and these are 256 bits of CSPRNG output, so it would only add
+    -- latency to every authenticated request. key_prefix is for display in a UI
+    -- and is deliberately not unique.
     key_prefix   text not null,
     key_hash     bytea not null,
     scopes       text[] not null default '{}',
@@ -38,7 +41,8 @@ create table api_keys (
     revoked_at   timestamptz,
     created_at   timestamptz not null default now()
 );
-create unique index api_keys_prefix_live on api_keys (key_prefix) where revoked_at is null;
+create unique index api_keys_hash on api_keys (key_hash);
+create index api_keys_prefix on api_keys (key_prefix);
 create index api_keys_tenant on api_keys (tenant_id);
 
 create table audit_events (

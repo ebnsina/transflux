@@ -28,8 +28,8 @@ rendition back, and survive a worker being killed mid-encode.
 
 | # | Slice | Done when |
 |---|---|---|
-| 0 | Repo skeleton, config, Postgres migrations, Compose (control plane + PG + MinIO) | `docker compose up` gives a healthy API and a migrated DB |
-| 1 | Tenancy + API keys + auth middleware + audit | Cross-tenant read attempts fail in an integration test |
+| 0 | Repo skeleton, config, Postgres migrations, Compose | ✅ Boots against Postgres 17, migrates, serves health endpoints |
+| 1 | Tenancy + API keys + auth middleware + audit | ✅ Cross-tenant resolution and revocation fail in an integration test |
 | 2 | Storage abstraction over S3/MinIO, presign, multipart | Round-trip test against MinIO, including a resumed multipart |
 | 3 | Assets, asset versions, resumable uploads, completion verification (managed sources only) | Interrupted upload resumes; a size/checksum mismatch is rejected; unverified source cannot start a job |
 | 4 | Job/task/attempt tables + state machine | Unit tests for every legal and illegal transition |
