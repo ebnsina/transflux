@@ -115,7 +115,11 @@ func encodeTask(ctx context.Context, workDir, ffmpegBin string, raw json.RawMess
 		Result: job.Result{
 			Success: true,
 			Output:  out,
-			Metrics: job.Metrics{BytesOut: info.Size()},
+			Metrics: job.Metrics{
+				BytesOut:        info.Size(),
+				CPUSeconds:      run.CPUSeconds,
+				PeakMemoryBytes: run.PeakMemoryBytes,
+			},
 		},
 		Artifacts: []artifact.Registration{{
 			Kind: "rendition", Label: spec.OutputLabel, StorageKey: spec.OutputKey,

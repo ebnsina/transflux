@@ -17,10 +17,13 @@ import (
 	"time"
 
 	"github.com/ebnsina/transflux/internal/agent"
+	"github.com/ebnsina/transflux/internal/obs"
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	// The worker handles presigned URLs and its own credential, so it gets the
+	// same redaction the control plane has.
+	log := slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stderr, nil)))
 	slog.SetDefault(log)
 
 	if err := run(log); err != nil {

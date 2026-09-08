@@ -16,6 +16,7 @@ import (
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/job"
+	"github.com/ebnsina/transflux/internal/obs"
 	"github.com/ebnsina/transflux/internal/pipeline"
 	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/storage"
@@ -36,6 +37,7 @@ type Deps struct {
 	Probes            *probe.Store
 	Artifacts         *artifact.Store
 	Validations       *validate.Store
+	Metrics           *obs.Metrics
 	Storage           storage.Store
 	HeartbeatInterval time.Duration
 	LeaseTTL          time.Duration
@@ -99,7 +101,13 @@ func (s *Server) Handler() http.Handler {
 	v1.Handle("GET /v1/workers/{id}", adminScoped(s.handleGetWorker))
 	v1.Handle("POST /v1/workers/{id}/state", adminScoped(s.handleSetWorkerState))
 
+	// Scraping needs an admin key. The numbers here carry no tenant labels, but
+	// queue depths and fleet size are still operational detail rather than
+	// something to publish.
+	v1.Handle("GET /metrics", adminScoped(s.d.Metrics.Handler().ServeHTTP))
+
 	mux.Handle("/v1/", auth.Middleware(s.d.Auth, unauthorized, serverError)(v1))
+	mux.Handle("/metrics", auth.Middleware(s.d.Auth, unauthorized, serverError)(v1))
 
 	// The worker protocol authenticates with worker credentials, not API keys,
 	// so it is mounted outside the /v1 tenant surface entirely.
@@ -111,7 +119,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/artifacts", s.handleRegisterArtifact)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/complete", s.handleWorkerComplete)
 
-	return mux
+	// Latency and status for every route, labelled by pattern rather than path
+	// so an id in a URL cannot create a series per asset.
+	return s.d.Metrics.Middleware(mux)
 }
 
 // handleMe echoes the authenticated identity. It exists so a caller can verify

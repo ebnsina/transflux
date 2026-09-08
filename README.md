@@ -107,6 +107,7 @@ internal/pipeline/   built-in pipeline presets and ladder planning
 internal/probe/      ffprobe parsing, tracks, colour and HDR
 internal/validate/   output validation checks and their results
 internal/worker/     worker registry, capabilities, heartbeats, lifecycle
+internal/obs/        log redaction, metrics, queue gauges
 internal/config/     environment configuration
 internal/db/         pool + embedded forward-only migrations
 docs/adr/            architecture decision records

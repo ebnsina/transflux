@@ -35,6 +35,10 @@ type RunResult struct {
 	// useful thing to show a human when a job fails.
 	Stderr   string
 	Duration time.Duration
+	// CPUSeconds is what the child actually consumed, which is what an encode
+	// costs. Wall time only says how long we waited.
+	CPUSeconds      float64
+	PeakMemoryBytes int64
 }
 
 // ExitError carries a non-zero exit so callers can classify it.
@@ -114,6 +118,12 @@ func Run(ctx context.Context, bin string, args []string, onProgress func(Progres
 	close(stopped)
 
 	res := RunResult{Stderr: strings.TrimSpace(stderr.String()), Duration: time.Since(start)}
+	if st := cmd.ProcessState; st != nil {
+		res.CPUSeconds = (st.UserTime() + st.SystemTime()).Seconds()
+		if usage, ok := st.SysUsage().(*syscall.Rusage); ok {
+			res.PeakMemoryBytes = maxRSSBytes(usage)
+		}
+	}
 
 	// A cancelled run is a cancellation, not a tool failure: reporting the
 	// SIGTERM exit code as an encoding error would send it for a retry.

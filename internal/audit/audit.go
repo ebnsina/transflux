@@ -4,8 +4,8 @@ package audit
 import (
 	"context"
 	"log/slog"
-	"strings"
 
+	"github.com/ebnsina/transflux/internal/obs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,46 +35,13 @@ func (r *Recorder) Record(ctx context.Context, e Event) {
 			(id, tenant_id, actor_type, actor_id, action, subject_type, subject_id, detail)
 		values ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		uuid.Must(uuid.NewV7()), e.TenantID, e.ActorType, e.ActorID,
-		e.Action, e.SubjectType, e.SubjectID, Redact(e.Detail))
+		e.Action, e.SubjectType, e.SubjectID, obs.Redact(e.Detail))
 	if err != nil {
 		slog.ErrorContext(ctx, "audit write failed", "action", e.Action, "err", err)
 	}
 }
 
-// sensitive names a value that must never reach the audit table: content keys,
-// API tokens, customer storage credentials.
-var sensitive = []string{
-	"secret", "token", "password", "credential", "authorization",
-	"key_hash", "content_key", "wrapped", "pssh", "private",
-}
-
-// Redact replaces sensitive values, recursively, keeping the key so the shape
-// of the event is still readable.
-func Redact(in map[string]any) map[string]any {
-	if in == nil {
-		return map[string]any{}
-	}
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		if isSensitive(k) {
-			out[k] = "[redacted]"
-			continue
-		}
-		if nested, ok := v.(map[string]any); ok {
-			out[k] = Redact(nested)
-			continue
-		}
-		out[k] = v
-	}
-	return out
-}
-
-func isSensitive(key string) bool {
-	k := strings.ToLower(key)
-	for _, s := range sensitive {
-		if strings.Contains(k, s) {
-			return true
-		}
-	}
-	return false
-}
+// Redact is kept as an alias so callers read naturally. The list of sensitive
+// names lives in obs, so logs and the audit trail cannot drift apart on what
+// counts as a secret.
+func Redact(in map[string]any) map[string]any { return obs.Redact(in) }

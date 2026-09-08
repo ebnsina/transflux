@@ -147,6 +147,7 @@ func (s *Server) handleWorkerLease(w http.ResponseWriter, r *http.Request) {
 	}, s.d.LeaseTTL)
 	switch {
 	case errors.Is(err, job.ErrNoWork):
+		s.d.Metrics.LeaseRequests.WithLabelValues("no_work").Inc()
 		w.WriteHeader(http.StatusNoContent)
 	case err != nil:
 		internalError(w, r, "lease task", err)
@@ -159,6 +160,7 @@ func (s *Server) handleWorkerLease(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		assignment.Spec = resolved
+		s.d.Metrics.LeaseRequests.WithLabelValues("assigned").Inc()
 		writeJSON(w, http.StatusOK, assignment)
 	}
 }
@@ -225,6 +227,25 @@ func (s *Server) handleWorkerComplete(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		internalError(w, r, "complete attempt", err)
 		return
+	}
+
+	// Per-attempt accounting, which is what makes cost-per-asset answerable.
+	outcome := "failed"
+	if completion.Succeeded {
+		outcome = "succeeded"
+	}
+	s.d.Metrics.TaskOutcomes.WithLabelValues(completion.Operation, outcome).Inc()
+	if res.Metrics.WallSeconds > 0 {
+		s.d.Metrics.TaskDuration.WithLabelValues(completion.Operation).Observe(res.Metrics.WallSeconds)
+	}
+	if res.Metrics.CPUSeconds > 0 {
+		s.d.Metrics.CPUSeconds.WithLabelValues(completion.Operation).Add(res.Metrics.CPUSeconds)
+	}
+	if res.Metrics.BytesIn > 0 {
+		s.d.Metrics.BytesProcessed.WithLabelValues("in").Add(float64(res.Metrics.BytesIn))
+	}
+	if res.Metrics.BytesOut > 0 {
+		s.d.Metrics.BytesProcessed.WithLabelValues("out").Add(float64(res.Metrics.BytesOut))
 	}
 
 	// Operation-specific handling lives here rather than in the job package,

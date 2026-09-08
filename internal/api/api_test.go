@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ebnsina/transflux/internal/auth"
+	"github.com/ebnsina/transflux/internal/obs"
 	"github.com/google/uuid"
 )
 
@@ -43,7 +44,7 @@ func TestHealthAndReadiness(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := New(Deps{Auth: fakeAuth{}, Ping: tc.ping})
+			srv := New(Deps{Auth: fakeAuth{}, Ping: tc.ping, Metrics: obs.NewMetrics()})
 			rec := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
 			if rec.Code != tc.want {
@@ -58,7 +59,7 @@ func TestV1RequiresAuth(t *testing.T) {
 	tenantID := uuid.Must(uuid.NewV7())
 
 	t.Run("rejects a request with no key", func(t *testing.T) {
-		srv := New(Deps{Auth: fakeAuth{err: auth.ErrUnauthorized}, Ping: ping})
+		srv := New(Deps{Auth: fakeAuth{err: auth.ErrUnauthorized}, Ping: ping, Metrics: obs.NewMetrics()})
 		rec := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/v1/me", nil))
 
@@ -77,7 +78,7 @@ func TestV1RequiresAuth(t *testing.T) {
 	t.Run("returns the resolved identity", func(t *testing.T) {
 		srv := New(Deps{Auth: fakeAuth{principal: auth.Principal{
 			TenantID: tenantID, Scopes: []string{auth.ScopeJobsRead},
-		}}, Ping: ping})
+		}}, Ping: ping, Metrics: obs.NewMetrics()})
 
 		req := httptest.NewRequest("GET", "/v1/me", nil)
 		req.Header.Set("Authorization", "Bearer tf_test_x")

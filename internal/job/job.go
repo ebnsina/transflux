@@ -415,6 +415,60 @@ func (s *Store) reconcileJob(ctx context.Context, tx pgx.Tx, tenantID, jobID uui
 	return err
 }
 
+// QueueCount is one bucket of the queue.
+type QueueCount struct {
+	Operation string
+	State     string
+	Count     int
+}
+
+// QueueStats reports the queue by operation and state, for gauges. It is
+// aggregate and carries no tenant, because per-tenant series are unbounded.
+func (s *Store) QueueStats(ctx context.Context) ([]QueueCount, error) {
+	rows, err := s.pool.Query(ctx, `
+		select operation, state, count(*)
+		  from tasks
+		 where state in ('pending','queued','leased','running')
+		 group by operation, state`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []QueueCount{}
+	for rows.Next() {
+		var c QueueCount
+		if err := rows.Scan(&c.Operation, &c.State, &c.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UnschedulableCount reports queued tasks that no online worker can run.
+//
+// A task nothing is capable of taking looks exactly like a busy queue from
+// outside, and waiting for someone to notice is how a misconfigured fleet goes
+// unseen for a day. It is worth its own number.
+func (s *Store) UnschedulableCount(ctx context.Context) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		select count(*) from tasks t
+		 where t.state = 'queued'
+		   and not exists (
+		     select 1 from workers w
+		      where w.state = 'online'
+		        and w.capabilities->'operations' ? t.operation
+		        and (t.requirements->>'encoder' is null
+		             or w.capabilities->'encoders' ? (t.requirements->>'encoder'))
+		        and (t.requirements->>'arch' is null or w.arch = t.requirements->>'arch')
+		        and ((t.requirements->>'gpu')::boolean is not true or w.gpu_model is not null)
+		        and coalesce((t.requirements->>'memory_bytes')::bigint, 0) <= w.memory_bytes)`,
+	).Scan(&n)
+	return n, err
+}
+
 func (s *Store) byIdempotencyKey(ctx context.Context, tenantID uuid.UUID, key string) (Job, error) {
 	var j Job
 	err := s.pool.QueryRow(ctx, `

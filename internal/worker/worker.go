@@ -316,6 +316,26 @@ func (s *Store) Facts(ctx context.Context, id uuid.UUID) (Worker, int64, error) 
 	return w, *free, nil
 }
 
+// StateCounts reports how many workers are in each state, for gauges.
+func (s *Store) StateCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `select state, count(*) from workers group by state`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]int{}
+	for rows.Next() {
+		var state string
+		var n int
+		if err := rows.Scan(&state, &n); err != nil {
+			return nil, err
+		}
+		out[state] = n
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (Worker, error) {
 	w, err := s.scanOne(ctx, `where w.id = $1`, id)
 	return w, err

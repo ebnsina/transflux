@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ebnsina/transflux/internal/api"
 	"github.com/ebnsina/transflux/internal/artifact"
@@ -28,6 +29,7 @@ import (
 	"github.com/ebnsina/transflux/internal/config"
 	"github.com/ebnsina/transflux/internal/db"
 	"github.com/ebnsina/transflux/internal/job"
+	"github.com/ebnsina/transflux/internal/obs"
 	"github.com/ebnsina/transflux/internal/pipeline"
 	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/storage"
@@ -51,7 +53,10 @@ func run(args []string) error {
 		return err
 	}
 
-	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	// Redaction wraps the handler rather than sitting at call sites, so it
+	// cannot be bypassed by logging through a different route.
+	log := slog.New(obs.NewRedactingHandler(
+		slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel})))
 	slog.SetDefault(log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -83,6 +88,7 @@ func run(args []string) error {
 }
 
 func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store storage.Store, log *slog.Logger) error {
+	metrics := obs.NewMetrics()
 	workers := worker.NewStore(pool, cfg.WorkerBootstrapToken)
 
 	// Take workers offline once their heartbeats stop. Reclaiming the work they
@@ -95,6 +101,11 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 	// end with the task available to somebody else.
 	jobs := job.NewStore(pool)
 	go job.SweepLeases(ctx, jobs, cfg.LeaseSweepInterval, log)
+
+	// Gauges are sampled rather than maintained incrementally: an incremental
+	// count drifts the first time a process restarts, and a queue depth that is
+	// quietly wrong is worse than one a few seconds stale.
+	go obs.Collect(ctx, metrics, statsSource{jobs: jobs, workers: workers}, 15*time.Second, log)
 
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
@@ -111,6 +122,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 			Probes:            probe.NewStore(pool),
 			Artifacts:         artifact.NewStore(pool, store),
 			Validations:       validate.NewStore(pool),
+			Metrics:           metrics,
 			Storage:           store,
 			SourceURLTTL:      cfg.SourceURLTTL,
 			DownloadURLTTL:    cfg.DownloadURLTTL,
@@ -184,4 +196,31 @@ func bootstrap(ctx context.Context, pool *pgxpool.Pool, env string, args []strin
 	fmt.Printf("tenant_id:  %s\napi_key:    %s\n\nStore the key now — it is not recoverable.\n",
 		t.ID, key.Secret)
 	return nil
+}
+
+// statsSource adapts the domain stores to what the metrics collector needs,
+// so neither package has to know the other exists.
+type statsSource struct {
+	jobs    *job.Store
+	workers *worker.Store
+}
+
+func (s statsSource) QueueStats(ctx context.Context) ([]obs.QueueBucket, error) {
+	counts, err := s.jobs.QueueStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]obs.QueueBucket, 0, len(counts))
+	for _, c := range counts {
+		out = append(out, obs.QueueBucket{Operation: c.Operation, State: c.State, Count: c.Count})
+	}
+	return out, nil
+}
+
+func (s statsSource) UnschedulableCount(ctx context.Context) (int, error) {
+	return s.jobs.UnschedulableCount(ctx)
+}
+
+func (s statsSource) WorkerStateCounts(ctx context.Context) (map[string]int, error) {
+	return s.workers.StateCounts(ctx)
 }

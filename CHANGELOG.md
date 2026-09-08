@@ -8,6 +8,18 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Observability.**
+  - `GET /metrics` — Prometheus metrics, behind an `admin` key. Request counts
+    and latency by route, queue depth by operation and state, worker counts by
+    state, lease outcomes, task outcomes and durations, CPU seconds and bytes
+    processed. Labels never carry a tenant, asset or job id: one time series per
+    asset defeats the metrics system at the moment it is most needed.
+  - `transflux_unschedulable_tasks` counts queued tasks no online worker is
+    capable of running. That situation looks identical to a busy queue from
+    outside, so it gets its own number rather than waiting to be noticed.
+  - Per-attempt resource accounting now records real CPU time and peak memory
+    from the media process, not just wall clock, which is what makes
+    cost-per-asset answerable later.
 - **Output validation.** Every transcode now ends in a validation task, and the
   job only succeeds if it passes. An encoder exiting zero is not evidence that
   the file plays.
@@ -153,6 +165,13 @@ pre-release and does not yet follow semantic versioning.
   avoid colliding with a local Postgres on 5432 or another service on 8080; all
   are overridable via `TRANSFLUX_HTTP_PORT`, `TRANSFLUX_PG_PORT`,
   `TRANSFLUX_S3_PORT` and `TRANSFLUX_S3_CONSOLE_PORT`.
+
+### Security
+
+- Secrets are redacted by the logging handler itself rather than at call sites:
+  API keys, worker credentials, content keys and presigned URLs cannot reach a
+  log file even from a debug line added later. A presigned URL is treated as a
+  secret because it is a bearer credential for one object.
 
 ### Notes
 
