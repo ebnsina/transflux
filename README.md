@@ -36,6 +36,31 @@ docker compose exec control-plane /transflux bootstrap -name "Acme Media"
 curl -H "Authorization: Bearer $KEY" localhost:7080/v1/me
 ```
 
+### Uploading
+
+Bytes go straight from the client to object storage over presigned URLs; they
+never pass through the control plane.
+
+```sh
+# 1. create an asset (and its first version)
+POST /v1/assets                      {"name": "film.mp4"}
+
+# 2. start an upload; the response carries part_size and presigned part URLs
+POST /v1/assets/{id}/uploads         {"size_bytes": 9437184}
+
+# 3. PUT each part directly to its URL
+
+# 4. resume at any point: returns what arrived and URLs for what did not
+GET  /v1/uploads/{id}
+
+# 5. verify and promote to the asset version's source
+POST /v1/uploads/{id}/complete
+```
+
+`complete` checks every part is present and correctly sized, then compares the
+assembled object's size against the declared size. Only then does a source
+record exist, and only a verified source may be processed.
+
 API keys are 256 bits of CSPRNG output, stored as SHA-256. A password KDF would
 be the wrong tool: argon2 exists to slow brute force of low-entropy secrets, and
 would only add latency to every authenticated request. Every authentication

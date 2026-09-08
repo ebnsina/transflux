@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/ebnsina/transflux/internal/storage"
 )
 
 type Config struct {
@@ -18,6 +20,7 @@ type Config struct {
 	DatabaseURL     string
 	LogLevel        slog.Level
 	ShutdownTimeout time.Duration
+	Storage         storage.Config
 }
 
 func Load() (Config, error) {
@@ -33,6 +36,19 @@ func Load() (Config, error) {
 	}
 	if c.Env != "dev" && c.Env != "prod" {
 		return c, fmt.Errorf("TRANSFLUX_ENV must be dev or prod, got %q", c.Env)
+	}
+
+	c.Storage = storage.Config{
+		Endpoint:       os.Getenv("TRANSFLUX_S3_ENDPOINT"), // empty means real AWS S3
+		PublicEndpoint: os.Getenv("TRANSFLUX_S3_PUBLIC_ENDPOINT"),
+		Region:         env("TRANSFLUX_S3_REGION", "us-east-1"),
+		Bucket:         os.Getenv("TRANSFLUX_S3_BUCKET"),
+		AccessKey:      os.Getenv("TRANSFLUX_S3_ACCESS_KEY"),
+		SecretKey:      os.Getenv("TRANSFLUX_S3_SECRET_KEY"),
+		PathStyle:      os.Getenv("TRANSFLUX_S3_PATH_STYLE") == "true",
+	}
+	if c.Storage.Bucket == "" {
+		return c, fmt.Errorf("TRANSFLUX_S3_BUCKET is required")
 	}
 
 	lvl := env("TRANSFLUX_LOG_LEVEL", "info")

@@ -37,6 +37,8 @@ services:
       TRANSFLUX_DATABASE_URL: postgres://transflux:${POSTGRES_PASSWORD:-transflux}@postgres:5432/transflux?sslmode=disable
       TRANSFLUX_LOG_LEVEL: debug
       TRANSFLUX_S3_ENDPOINT: http://minio:9000
+      # Presigned URLs are handed to clients outside this network.
+      TRANSFLUX_S3_PUBLIC_ENDPOINT: http://localhost:${TRANSFLUX_S3_PORT:-7900}
       TRANSFLUX_S3_REGION: us-east-1
       TRANSFLUX_S3_BUCKET: transflux
       TRANSFLUX_S3_ACCESS_KEY: ${S3_ACCESS_KEY:-transflux}

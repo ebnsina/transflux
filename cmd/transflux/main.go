@@ -21,11 +21,14 @@ import (
 	"syscall"
 
 	"github.com/ebnsina/transflux/internal/api"
+	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/audit"
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/config"
 	"github.com/ebnsina/transflux/internal/db"
+	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/tenant"
+	"github.com/ebnsina/transflux/internal/upload"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -61,13 +64,27 @@ func run(args []string) error {
 	if len(args) > 0 && args[0] == "bootstrap" {
 		return bootstrap(ctx, pool, cfg.Env, args[1:])
 	}
-	return serve(ctx, cfg, pool, log)
+	store, err := storage.NewS3(ctx, cfg.Storage)
+	if err != nil {
+		return err
+	}
+	// Fail the boot on a missing or unreachable bucket rather than letting it
+	// surface as a 500 on someone's first upload. Auto-create in dev only.
+	if err := store.Verify(ctx, cfg.Env == "dev"); err != nil {
+		return err
+	}
+	return serve(ctx, cfg, pool, store, log)
 }
 
-func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) error {
+func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store storage.Store, log *slog.Logger) error {
 	srv := &http.Server{
-		Addr:    cfg.HTTPAddr,
-		Handler: api.New(auth.NewStore(pool), pool.Ping).Handler(),
+		Addr: cfg.HTTPAddr,
+		Handler: api.New(api.Deps{
+			Auth:    auth.NewStore(pool),
+			Ping:    pool.Ping,
+			Assets:  asset.NewStore(pool),
+			Uploads: upload.NewService(pool, store),
+		}).Handler(),
 	}
 
 	errc := make(chan error, 1)

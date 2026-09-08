@@ -97,47 +97,20 @@ create table uploads (
   storage_upload_id text,                     -- S3 multipart id
   declared_size_bytes bigint,
   declared_checksum bytea,
+  part_size         int not null,
+  part_count        int not null,
   status            text not null check (status in
-                      ('created','in_progress','completing','completed','aborted','expired')),
+                      ('in_progress','completed','aborted','expired')),
   expires_at        timestamptz not null,
   created_at        timestamptz not null default now(),
   completed_at      timestamptz
 );
 create index on uploads (status, expires_at);
 
-create table upload_parts (
-  upload_id     uuid not null references uploads on delete cascade,
-  part_number   int  not null check (part_number between 1 and 10000),
-  size_bytes    bigint not null,
-  etag          text not null,
-  checksum      bytea,
-  uploaded_at   timestamptz not null default now(),
-  primary key (upload_id, part_number)        -- duplicate part = idempotent overwrite
-);
-
-create table source_files (
-  id                uuid primary key,
-  tenant_id         uuid not null references tenants,
-  asset_version_id  uuid not null references asset_versions,
-  -- 'managed' sources live in our bucket and are verified at upload completion.
-  -- External sources cannot be verified before a job runs: they are checked at
-  -- fetch time and may fail the first task with permanent_input instead.
-  origin            text not null default 'managed'
-                      check (origin in ('managed','external_url','external_s3')),
-  storage_bucket    text,                     -- managed only
-  storage_key       text,                     -- managed only
-  external_url      text,                     -- external_url only
-  external_ref      jsonb,                    -- external_s3: endpoint, region, bucket, key
-  credential_id     uuid references storage_credentials,
-  size_bytes        bigint,                   -- unknown until fetch for external
-  checksum_algo     text,
-  checksum          bytea,
-  content_type      text,
-  verified_at       timestamptz,              -- managed: NULL ⇒ no job may run on it
-  created_at        timestamptz not null default now(),
-  check ((origin = 'managed') = (storage_key is not null)),
-  unique (storage_bucket, storage_key)
-);
+-- There is deliberately no upload_parts table. The storage provider's ListParts
+-- is the authority on what was actually received: a client can upload a part
+-- and die before telling us, and our own record would then be wrong in exactly
+-- the direction that loses data.
 
 -- ── probe ───────────────────────────────────────────────────────────────
 create table probes (

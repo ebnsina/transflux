@@ -6,15 +6,29 @@ import (
 )
 
 func TestLoad(t *testing.T) {
+	setRequired := func(t *testing.T) {
+		t.Setenv("TRANSFLUX_DATABASE_URL", "postgres://x")
+		t.Setenv("TRANSFLUX_S3_BUCKET", "transflux")
+	}
+
 	t.Run("requires a database url", func(t *testing.T) {
+		setRequired(t)
 		t.Setenv("TRANSFLUX_DATABASE_URL", "")
 		if _, err := Load(); err == nil {
 			t.Fatal("want error when TRANSFLUX_DATABASE_URL is unset")
 		}
 	})
 
+	t.Run("requires a bucket", func(t *testing.T) {
+		setRequired(t)
+		t.Setenv("TRANSFLUX_S3_BUCKET", "")
+		if _, err := Load(); err == nil {
+			t.Fatal("want error when TRANSFLUX_S3_BUCKET is unset")
+		}
+	})
+
 	t.Run("rejects an unknown env", func(t *testing.T) {
-		t.Setenv("TRANSFLUX_DATABASE_URL", "postgres://x")
+		setRequired(t)
 		t.Setenv("TRANSFLUX_ENV", "staging")
 		if _, err := Load(); err == nil {
 			t.Fatal("want error for an unknown TRANSFLUX_ENV")
@@ -22,7 +36,7 @@ func TestLoad(t *testing.T) {
 	})
 
 	t.Run("rejects an unknown log level", func(t *testing.T) {
-		t.Setenv("TRANSFLUX_DATABASE_URL", "postgres://x")
+		setRequired(t)
 		t.Setenv("TRANSFLUX_LOG_LEVEL", "chatty")
 		if _, err := Load(); err == nil {
 			t.Fatal("want error for an unknown TRANSFLUX_LOG_LEVEL")
@@ -30,7 +44,7 @@ func TestLoad(t *testing.T) {
 	})
 
 	t.Run("defaults", func(t *testing.T) {
-		t.Setenv("TRANSFLUX_DATABASE_URL", "postgres://x")
+		setRequired(t)
 		c, err := Load()
 		if err != nil {
 			t.Fatal(err)

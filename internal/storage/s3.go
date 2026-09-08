@@ -16,12 +16,18 @@ import (
 
 // Config describes any S3-compatible endpoint: AWS, MinIO, R2, B2, Spaces.
 type Config struct {
-	Endpoint  string // empty means real AWS S3
-	Region    string
-	Bucket    string
-	AccessKey string
-	SecretKey string
-	PathStyle bool // MinIO and most self-hosted gateways need this
+	Endpoint string // empty means real AWS S3
+	// PublicEndpoint is what CLIENTS and WORKERS can reach, when that differs
+	// from Endpoint. Presigned URLs are signed against it, since a URL signed
+	// for an internal hostname is useless to whoever has to fetch it — and the
+	// failure only shows up at upload time, not at boot. Empty means Endpoint
+	// is publicly reachable.
+	PublicEndpoint string
+	Region         string
+	Bucket         string
+	AccessKey      string
+	SecretKey      string
+	PathStyle      bool // MinIO and most self-hosted gateways need this
 }
 
 type S3Store struct {
@@ -47,29 +53,49 @@ func NewS3(ctx context.Context, c Config) (*S3Store, error) {
 		return nil, fmt.Errorf("storage: load config: %w", err)
 	}
 
-	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		if c.Endpoint != "" {
-			o.BaseEndpoint = aws.String(c.Endpoint)
-		}
-		o.UsePathStyle = c.PathStyle
-	})
+	newClient := func(endpoint string) *s3.Client {
+		return s3.NewFromConfig(cfg, func(o *s3.Options) {
+			if endpoint != "" {
+				o.BaseEndpoint = aws.String(endpoint)
+			}
+			o.UsePathStyle = c.PathStyle
+		})
+	}
 
-	return &S3Store{client: client, presign: s3.NewPresignClient(client), bucket: c.Bucket}, nil
+	client := newClient(c.Endpoint)
+	// SigV4 signs the host, so the presigning client must be built against the
+	// endpoint the recipient will actually call.
+	presignVia := client
+	if c.PublicEndpoint != "" && c.PublicEndpoint != c.Endpoint {
+		presignVia = newClient(c.PublicEndpoint)
+	}
+
+	return &S3Store{client: client, presign: s3.NewPresignClient(presignVia), bucket: c.Bucket}, nil
 }
 
-// EnsureBucket creates the bucket when absent. Intended for development and
-// tests; in production the bucket is provisioned with its lifecycle rules.
-func (s *S3Store) EnsureBucket(ctx context.Context) error {
+// Verify checks the bucket is reachable, and creates it when create is set.
+// Called at startup so a misconfigured or missing bucket fails the boot rather
+// than surfacing as a 500 on a customer's first upload.
+//
+// Creation is for development and tests only: in production the bucket is
+// provisioned deliberately, with its lifecycle and retention rules.
+func (s *S3Store) Verify(ctx context.Context, create bool) error {
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket})
 	if err == nil {
 		return nil
+	}
+	if !create {
+		return fmt.Errorf("storage: bucket %q is not reachable: %w", s.bucket, err)
 	}
 	_, err = s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket})
 	var owned *types.BucketAlreadyOwnedByYou
 	if errors.As(err, &owned) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("storage: create bucket %q: %w", s.bucket, err)
+	}
+	return nil
 }
 
 func (s *S3Store) Head(ctx context.Context, key string) (ObjectInfo, error) {

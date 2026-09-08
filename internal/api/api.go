@@ -1,24 +1,32 @@
-// Package api is the HTTP surface. It owns routing, the error envelope and
-// nothing else: business logic lives in the domain packages.
+// Package api is the HTTP surface. It owns routing, request decoding and the
+// error envelope, and nothing else: business logic lives in the domain
+// packages.
 package api
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
+	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
+	"github.com/ebnsina/transflux/internal/upload"
+	"github.com/google/uuid"
 )
 
-type Server struct {
-	auth auth.Authenticator
-	ping func(context.Context) error
+type Deps struct {
+	Auth    auth.Authenticator
+	Ping    func(context.Context) error
+	Assets  *asset.Store
+	Uploads *upload.Service
 }
 
-func New(a auth.Authenticator, ping func(context.Context) error) *Server {
-	return &Server{auth: a, ping: ping}
-}
+type Server struct{ d Deps }
+
+func New(d Deps) *Server { return &Server{d: d} }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -31,7 +39,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Readiness: dependencies are usable, so take me out of rotation if not.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := s.ping(r.Context()); err != nil {
+		if err := s.d.Ping(r.Context()); err != nil {
 			slog.WarnContext(r.Context(), "readiness check failed", "err", err)
 			writeError(w, http.StatusServiceUnavailable, "database_unavailable",
 				"Database is not reachable.")
@@ -46,7 +54,16 @@ func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	v1.HandleFunc("GET /v1/me", s.handleMe)
 
-	mux.Handle("/v1/", auth.Middleware(s.auth, unauthorized, serverError)(v1))
+	v1.Handle("POST /v1/assets", scoped(auth.ScopeAssetsWrite, s.handleCreateAsset))
+	v1.Handle("GET /v1/assets", scoped(auth.ScopeAssetsRead, s.handleListAssets))
+	v1.Handle("GET /v1/assets/{id}", scoped(auth.ScopeAssetsRead, s.handleGetAsset))
+	v1.Handle("POST /v1/assets/{id}/uploads", scoped(auth.ScopeAssetsWrite, s.handleCreateUpload))
+
+	v1.Handle("GET /v1/uploads/{id}", scoped(auth.ScopeAssetsRead, s.handleUploadStatus))
+	v1.Handle("POST /v1/uploads/{id}/complete", scoped(auth.ScopeAssetsWrite, s.handleCompleteUpload))
+	v1.Handle("DELETE /v1/uploads/{id}", scoped(auth.ScopeAssetsWrite, s.handleAbortUpload))
+
+	mux.Handle("/v1/", auth.Middleware(s.d.Auth, unauthorized, serverError)(v1))
 	return mux
 }
 
@@ -63,6 +80,33 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		"api_key_id": p.KeyID,
 		"scopes":     p.Scopes,
 	})
+}
+
+func scoped(scope string, h http.HandlerFunc) http.Handler {
+	return auth.RequireScope(scope, forbidden)(h)
+}
+
+// ── request helpers ───────────────────────────────────────────────────────
+
+// pathUUID parses an id from the path. A malformed id is a 404 rather than a
+// 400: to the caller it is indistinguishable from an id that does not exist,
+// which is also what a valid id belonging to another tenant returns.
+func pathUUID(r *http.Request, name string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(r.PathValue(name))
+	return id, err == nil
+}
+
+// decode reads a JSON body with a size cap, so a huge or malformed body cannot
+// consume memory before validation runs.
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request",
+			"Request body is not valid JSON for this endpoint.")
+		return false
+	}
+	return true
 }
 
 // ── error envelope ────────────────────────────────────────────────────────
@@ -89,6 +133,17 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, b)
 }
 
+func notFound(w http.ResponseWriter) {
+	writeError(w, http.StatusNotFound, "not_found", "No such resource.")
+}
+
+// internalError logs the cause and tells the caller nothing about it: error
+// text can carry storage keys, SQL and other internals.
+func internalError(w http.ResponseWriter, r *http.Request, msg string, err error) {
+	slog.ErrorContext(r.Context(), msg, "err", err)
+	serverError(w, r)
+}
+
 // Authentication failures are deliberately indistinguishable: unknown,
 // malformed, revoked and expired keys all produce this exact response.
 func unauthorized(w http.ResponseWriter, _ *http.Request) {
@@ -105,3 +160,5 @@ func serverError(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusInternalServerError, "internal_error",
 		"Something went wrong on our side.")
 }
+
+var errNoPrincipal = errors.New("no principal on an authenticated route")

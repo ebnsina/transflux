@@ -43,7 +43,7 @@ func TestHealthAndReadiness(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := New(fakeAuth{}, tc.ping)
+			srv := New(Deps{Auth: fakeAuth{}, Ping: tc.ping})
 			rec := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
 			if rec.Code != tc.want {
@@ -58,7 +58,7 @@ func TestV1RequiresAuth(t *testing.T) {
 	tenantID := uuid.Must(uuid.NewV7())
 
 	t.Run("rejects a request with no key", func(t *testing.T) {
-		srv := New(fakeAuth{err: auth.ErrUnauthorized}, ping)
+		srv := New(Deps{Auth: fakeAuth{err: auth.ErrUnauthorized}, Ping: ping})
 		rec := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/v1/me", nil))
 
@@ -75,9 +75,9 @@ func TestV1RequiresAuth(t *testing.T) {
 	})
 
 	t.Run("returns the resolved identity", func(t *testing.T) {
-		srv := New(fakeAuth{principal: auth.Principal{
+		srv := New(Deps{Auth: fakeAuth{principal: auth.Principal{
 			TenantID: tenantID, Scopes: []string{auth.ScopeJobsRead},
-		}}, ping)
+		}}, Ping: ping})
 
 		req := httptest.NewRequest("GET", "/v1/me", nil)
 		req.Header.Set("Authorization", "Bearer tf_test_x")

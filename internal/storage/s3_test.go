@@ -33,7 +33,7 @@ func testStore(t *testing.T) *S3Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EnsureBucket(context.Background()); err != nil {
+	if err := s.Verify(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
 	return s
