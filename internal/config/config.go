@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,9 @@ type Config struct {
 	// slow chunk does not lose its lease, short enough that a dead worker's
 	// work is reclaimed promptly.
 	LeaseTTL time.Duration
+	// How often expired leases are reclaimed. Frequent enough that a dead
+	// worker's task restarts promptly, cheap enough to run forever.
+	LeaseSweepInterval time.Duration
 }
 
 func Load() (Config, error) {
@@ -71,6 +75,14 @@ func Load() (Config, error) {
 	c.HeartbeatInterval = 10 * time.Second
 	c.WorkerStaleAfter = 3 * c.HeartbeatInterval
 	c.LeaseTTL = 60 * time.Second
+	if raw := os.Getenv("TRANSFLUX_LEASE_TTL_SECONDS"); raw != "" {
+		secs, err := strconv.Atoi(raw)
+		if err != nil || secs < 5 {
+			return c, fmt.Errorf("TRANSFLUX_LEASE_TTL_SECONDS must be an integer >= 5, got %q", raw)
+		}
+		c.LeaseTTL = time.Duration(secs) * time.Second
+	}
+	c.LeaseSweepInterval = 5 * time.Second
 
 	lvl := env("TRANSFLUX_LOG_LEVEL", "info")
 	if err := c.LogLevel.UnmarshalText([]byte(strings.ToUpper(lvl))); err != nil {

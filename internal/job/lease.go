@@ -59,6 +59,12 @@ type Metrics struct {
 // from one that crashed mid-encode.
 func (s *Store) Start(ctx context.Context, attemptID, workerID uuid.UUID, leaseTTL time.Duration) error {
 	return s.withAttempt(ctx, attemptID, workerID, func(tx pgx.Tx, at attemptRow) error {
+		// Cancelled between the lease and the start report. Close the attempt
+		// rather than erroring: the worker did nothing wrong, and it will learn
+		// to stop from its next progress call.
+		if at.taskState == TaskCancelled {
+			return closeAttemptCancelled(ctx, tx, attemptID)
+		}
 		if err := checkAttempt(at.state, AttemptRunning); err != nil {
 			return err
 		}
@@ -98,6 +104,14 @@ func (s *Store) Progress(ctx context.Context, attemptID, workerID uuid.UUID,
 // Complete finishes an attempt and applies the retry policy to its task.
 func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res Result) (retrying bool, err error) {
 	err = s.withAttempt(ctx, attemptID, workerID, func(tx pgx.Tx, at attemptRow) error {
+		// The task was cancelled while this worker was still running it. Its
+		// result is discarded, but reporting is not an error — a worker that
+		// finished just before the cancel landed did nothing wrong, and
+		// failing its call would only make it retry.
+		if at.taskState == TaskCancelled {
+			return closeAttemptCancelled(ctx, tx, attemptID)
+		}
+
 		attemptTo := AttemptSucceeded
 		if !res.Success {
 			attemptTo = AttemptFailed
@@ -159,6 +173,15 @@ func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res
 		return s.reconcileJob(ctx, tx, at.tenantID, at.jobID)
 	})
 	return retrying, err
+}
+
+// closeAttemptCancelled ends an attempt whose task was cancelled underneath it.
+func closeAttemptCancelled(ctx context.Context, tx pgx.Tx, attemptID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		update task_attempts set state = 'cancelled', finished_at = now(),
+		       failure_reason = 'the task was cancelled while this attempt was running'
+		 where id = $1`, attemptID)
+	return err
 }
 
 type attemptRow struct {

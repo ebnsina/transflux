@@ -98,6 +98,16 @@ pre-release and does not yet follow semantic versioning.
   report, telling it to stop and discard its output. This is what stops a worker
   returning from a network partition overwriting a result another worker already
   produced.
+- **Work survives losing a worker.** A lease that stops being renewed is
+  reclaimed and the task is offered to another worker as a new attempt. A crash,
+  a kill, a network partition and a vanished spot instance all look the same and
+  all recover the same way. The previous attempt is kept on record as `expired`
+  with the reason, so the history of a task is not rewritten by its recovery.
+- Cancelling a job reaches a running worker on its next progress call, and a
+  worker that finishes just as the cancel lands has its report accepted quietly
+  and its result discarded — failing that call would only make it retry.
+- `TRANSFLUX_LEASE_TTL_SECONDS` sets how long a lease survives without a
+  progress report (default 60).
 - Retry budget is consumed when a task is leased, not when it fails. A worker
   that dies silently still counts, or a task that kills every worker it touches
   would be retried forever.

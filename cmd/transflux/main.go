@@ -86,6 +86,12 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 	// is still running.
 	go worker.Sweep(ctx, workers, cfg.HeartbeatInterval, cfg.WorkerStaleAfter, log)
 
+	// Reclaim work whose worker stopped reporting. This is what makes a worker
+	// disposable: a crash, a kill, a partition and a vanished spot instance all
+	// end with the task available to somebody else.
+	jobs := job.NewStore(pool)
+	go job.SweepLeases(ctx, jobs, cfg.LeaseSweepInterval, log)
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: api.New(api.Deps{
@@ -94,7 +100,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 			Assets:            asset.NewStore(pool),
 			Uploads:           upload.NewService(pool, store),
 			Workers:           workers,
-			Jobs:              job.NewStore(pool),
+			Jobs:              jobs,
 			HeartbeatInterval: cfg.HeartbeatInterval,
 			LeaseTTL:          cfg.LeaseTTL,
 		}).Handler(),
