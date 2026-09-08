@@ -20,6 +20,7 @@ import (
 	"github.com/ebnsina/transflux/internal/probe"
 	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/upload"
+	"github.com/ebnsina/transflux/internal/validate"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
 )
@@ -34,6 +35,7 @@ type Deps struct {
 	Pipelines         *pipeline.Store
 	Probes            *probe.Store
 	Artifacts         *artifact.Store
+	Validations       *validate.Store
 	Storage           storage.Store
 	HeartbeatInterval time.Duration
 	LeaseTTL          time.Duration

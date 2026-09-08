@@ -8,6 +8,18 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Output validation.** Every transcode now ends in a validation task, and the
+  job only succeeds if it passes. An encoder exiting zero is not evidence that
+  the file plays.
+  - Each output is fetched back from storage and checked: it exists, its size
+    and checksum match what was registered, it probes cleanly, and its codec,
+    resolution, duration, audio and HDR format are what the plan asked for. The
+    set is also checked for missing outputs, which no per-artifact check can
+    see.
+  - A failed job reports which check failed, in `GET /v1/jobs/{id}` under
+    `validation`, rather than only that something did.
+  - An artifact set whose validation fails is marked `failed`, so nothing is
+    delivered from it.
 - **Artifacts.** A job's outputs are recorded as immutable, versioned artifacts
   and can be fetched with a short-lived signed URL.
   - `GET /v1/jobs/{id}/artifacts` — the job's artifact sets and what is in them:

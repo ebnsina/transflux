@@ -7,6 +7,7 @@ import (
 	"github.com/ebnsina/transflux/internal/encode"
 	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/probe"
+	"github.com/ebnsina/transflux/internal/validate"
 )
 
 // Plan turns a preset into the concrete task graph for one source.
@@ -36,7 +37,11 @@ func Plan(p Preset, sourceKey string, media probe.Result) ([]job.NewTask, error)
 		return nil, fmt.Errorf("the source has no video track to encode")
 	}
 
-	var tasks []job.NewTask
+	var (
+		tasks        []job.NewTask
+		expectations []validate.Expectation
+		encodeKeys   []string
+	)
 	for _, rung := range p.Ladder {
 		width, height := fit(rung.Width, rung.Height, video.Width, video.Height)
 
@@ -99,8 +104,42 @@ func Plan(p Preset, sourceKey string, media probe.Result) ([]job.NewTask, error)
 				SlotClass: "encode",
 			},
 		})
+
+		expectations = append(expectations, validate.Expectation{
+			Label: rung.Label, Codec: cfg.Video.Codec,
+			Width: cfg.Video.Width, Height: cfg.Video.Height,
+			DurationMS: media.DurationMS,
+			AudioCodec: audioCodecOf(cfg),
+			HDRFormat:  video.HDRFormat,
+		})
+		encodeKeys = append(encodeKeys, "encode-"+rung.Label)
 	}
+
+	// Every ladder ends in validation, and the job only succeeds if it passes.
+	// Exit code zero is not success: a truncated upload produces a cheerful
+	// exit and a broken file.
+	validateSpec, err := json.Marshal(map[string]any{"expect": expectations})
+	if err != nil {
+		return nil, err
+	}
+	tasks = append(tasks, job.NewTask{
+		Key:       "validate",
+		Operation: "validate",
+		Spec:      validateSpec,
+		DependsOn: encodeKeys,
+		// Validation must not be abandoned on a flaky download, or a good set
+		// would be marked failed.
+		MaxAttempts: 3,
+	})
+
 	return tasks, nil
+}
+
+func audioCodecOf(cfg encode.Config) string {
+	if cfg.Audio == nil {
+		return ""
+	}
+	return cfg.Audio.Codec
 }
 
 // fit scales a rung to the source, preserving aspect ratio and never

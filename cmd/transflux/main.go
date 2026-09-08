@@ -33,6 +33,7 @@ import (
 	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/ebnsina/transflux/internal/tenant"
 	"github.com/ebnsina/transflux/internal/upload"
+	"github.com/ebnsina/transflux/internal/validate"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -109,6 +110,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 			Pipelines:         pipeline.NewStore(pool),
 			Probes:            probe.NewStore(pool),
 			Artifacts:         artifact.NewStore(pool, store),
+			Validations:       validate.NewStore(pool),
 			Storage:           store,
 			SourceURLTTL:      cfg.SourceURLTTL,
 			DownloadURLTTL:    cfg.DownloadURLTTL,

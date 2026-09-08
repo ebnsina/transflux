@@ -63,11 +63,14 @@ func New(cfg Config, log *slog.Logger) *Agent {
 	}
 	a.executors = map[string]Executor{
 		"probe": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
-			res, err := probe(ctx, cfg.FFprobeBin, spec, p)
+			res, err := probeTask(ctx, cfg.FFprobeBin, spec, p)
 			return Outcome{Result: res}, err
 		},
 		"encode": func(ctx context.Context, bin string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
 			return encodeTask(ctx, cfg.WorkDir, bin, spec, p)
+		},
+		"validate": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
+			return validateTask(ctx, cfg.WorkDir, cfg.FFprobeBin, spec, p)
 		},
 	}
 	return a

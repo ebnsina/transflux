@@ -22,7 +22,7 @@ type ProbeSpec struct {
 // The raw output is preserved rather than reduced here: the control plane
 // decides what it wants from it, and discarding fields at the edge means a
 // re-probe to recover them.
-func probe(ctx context.Context, ffprobeBin string, spec json.RawMessage, _ func(Progress)) (job.Result, error) {
+func probeTask(ctx context.Context, ffprobeBin string, spec json.RawMessage, _ func(Progress)) (job.Result, error) {
 	var s ProbeSpec
 	if err := json.Unmarshal(spec, &s); err != nil {
 		return failure(job.ClassPermanentConfig, fmt.Sprintf("probe spec is not valid: %v", err)), nil

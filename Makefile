@@ -11,6 +11,10 @@ test:  ; go test ./...
 #
 # Deliberately a SEPARATE database: the migration test drops the public schema,
 # so pointing this at the application database would wipe your dev data.
+#
+# -p 1 because integration tests share one database and the queue they lease
+# from is global by design. Package tests otherwise run in parallel and clear
+# each other's rows.
 test-all:
 	@docker compose exec -T postgres psql -U transflux -d postgres \
 		-c 'create database transflux_test' 2>/dev/null || true
@@ -18,7 +22,7 @@ test-all:
 	TRANSFLUX_TEST_S3_ENDPOINT=http://localhost:$${TRANSFLUX_S3_PORT:-7900} \
 	TRANSFLUX_TEST_S3_ACCESS_KEY=$${S3_ACCESS_KEY:-transflux} \
 	TRANSFLUX_TEST_S3_SECRET_KEY=$${S3_SECRET_KEY:-transflux123} \
-	go test ./... -count=1
+	go test ./... -count=1 -p 1
 
 lint:  ; go vet ./... && gofmt -l .
 

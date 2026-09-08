@@ -27,7 +27,7 @@ func TestProbeRejectsNonHTTPSources(t *testing.T) {
 		`{}`,
 	}
 	for _, spec := range bad {
-		res, err := probe(ctx, "ffprobe", json.RawMessage(spec), nil)
+		res, err := probeTask(ctx, "ffprobe", json.RawMessage(spec), nil)
 		if err != nil {
 			t.Fatalf("probe(%s) returned a transport error: %v", spec, err)
 		}
@@ -41,7 +41,7 @@ func TestProbeRejectsNonHTTPSources(t *testing.T) {
 		}
 	}
 
-	if res, _ := probe(ctx, "ffprobe", json.RawMessage(`not json`), nil); res.Success {
+	if res, _ := probeTask(ctx, "ffprobe", json.RawMessage(`not json`), nil); res.Success {
 		t.Error("probe accepted a malformed spec")
 	}
 }
@@ -58,7 +58,7 @@ func TestProbeReadsRealMedia(t *testing.T) {
 	defer cleanup()
 
 	spec, _ := json.Marshal(ProbeSpec{InputURL: url})
-	res, err := probe(ctx, "ffprobe", spec, nil)
+	res, err := probeTask(ctx, "ffprobe", spec, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestProbeClassifiesUnreadableSourceAsPermanent(t *testing.T) {
 	defer cleanup()
 
 	spec, _ := json.Marshal(ProbeSpec{InputURL: url})
-	res, err := probe(context.Background(), "ffprobe", spec, nil)
+	res, err := probeTask(context.Background(), "ffprobe", spec, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -130,7 +130,15 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, "list tasks", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"job": j, "tasks": tasks})
+
+	body := map[string]any{"job": j, "tasks": tasks}
+	// What was checked, and what it said. A failed job should not require
+	// reading worker logs to find out why.
+	if report, err := s.d.Validations.ForJob(r.Context(), p.TenantID, id); err == nil &&
+		len(report.Checks) > 0 {
+		body["validation"] = report
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
@@ -177,6 +185,28 @@ func (s *Server) resolveSpec(r *http.Request, a job.Assignment) (json.RawMessage
 			return nil, err
 		}
 		fields["input_url"] = url
+	}
+
+	// A validate task is given the artifacts that were actually registered,
+	// rather than the ones the plan expected: the difference between the two
+	// is exactly what it is there to notice.
+	if _, wantsArtifacts := fields["expect"]; wantsArtifacts {
+		registered, err := s.d.Artifacts.ForJob(r.Context(), a.TenantID, a.JobID)
+		if err != nil {
+			return nil, err
+		}
+		list := make([]map[string]any, 0, len(registered))
+		for _, art := range registered {
+			url, err := s.d.Storage.PresignGetForWorker(r.Context(), art.StorageKey, s.d.SourceURLTTL)
+			if err != nil {
+				return nil, err
+			}
+			list = append(list, map[string]any{
+				"label": art.Label, "url": url, "size_bytes": art.SizeBytes,
+				"checksum_algo": art.ChecksumAlgo, "checksum": art.Checksum,
+			})
+		}
+		fields["artifacts"] = list
 	}
 
 	if ref.OutputLabel != "" {

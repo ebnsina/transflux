@@ -263,6 +263,22 @@ func (s *Store) artifacts(ctx context.Context, tenantID, setID uuid.UUID) ([]Art
 	return out, rows.Err()
 }
 
+// ForJob returns the artifacts of a job's current set, for a validate task to
+// fetch and check.
+func (s *Store) ForJob(ctx context.Context, tenantID, jobID uuid.UUID) ([]Artifact, error) {
+	var setID uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		select id from artifact_sets where job_id = $1 and tenant_id = $2
+		 order by version desc limit 1`, jobID, tenantID).Scan(&setID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.artifacts(ctx, tenantID, setID)
+}
+
 // Get returns one artifact, scoped to its tenant.
 func (s *Store) Get(ctx context.Context, tenantID, id uuid.UUID) (Artifact, error) {
 	var a Artifact

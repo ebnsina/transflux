@@ -31,9 +31,11 @@ func planOne(t *testing.T, media probe.Result) encode.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 {
-		t.Fatalf("planned %d tasks, want 1", len(tasks))
+	// One encode plus the validation that gates the job.
+	if len(tasks) != 2 {
+		t.Fatalf("planned %d tasks, want an encode and a validate", len(tasks))
 	}
+
 	var spec struct {
 		Encode encode.Config `json:"encode"`
 	}
@@ -41,6 +43,53 @@ func planOne(t *testing.T, media probe.Result) encode.Config {
 		t.Fatal(err)
 	}
 	return spec.Encode
+}
+
+// Nothing is delivered until it has been checked, so every ladder must end in
+// a validation task that depends on all of its encodes.
+func TestLadderEndsInValidation(t *testing.T) {
+	tasks, err := Plan(presets["transcode-h264"], "t/x/source", source(1920, 1080, 25, 1, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	last := tasks[len(tasks)-1]
+	if last.Operation != "validate" {
+		t.Fatalf("the plan ends in %q, want validate", last.Operation)
+	}
+	if len(last.DependsOn) != len(tasks)-1 {
+		t.Errorf("validation depends on %d tasks, want all %d encodes",
+			len(last.DependsOn), len(tasks)-1)
+	}
+
+	// Expectations come from the plan, so they describe what was asked for
+	// rather than whatever the encoder happened to produce.
+	var spec struct {
+		Expect []struct {
+			Label      string `json:"label"`
+			Codec      string `json:"codec"`
+			Width      int    `json:"width"`
+			Height     int    `json:"height"`
+			DurationMS int64  `json:"duration_ms"`
+			AudioCodec string `json:"audio_codec"`
+		} `json:"expect"`
+	}
+	if err := json.Unmarshal(last.Spec, &spec); err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.Expect) != 1 {
+		t.Fatalf("validation expects %d artifacts, want 1", len(spec.Expect))
+	}
+	e := spec.Expect[0]
+	if e.Label != "720p_h264" || e.Codec != "h264" || e.Width != 1280 || e.Height != 720 {
+		t.Errorf("expectation = %+v, want the planned rung", e)
+	}
+	if e.DurationMS != 60000 {
+		t.Errorf("expected duration = %d, want the source's 60000", e.DurationMS)
+	}
+	if e.AudioCodec != "aac" {
+		t.Errorf("expected audio codec = %q, want aac", e.AudioCodec)
+	}
 }
 
 // Upscaling costs as much as a real encode and looks worse than the rung

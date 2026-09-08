@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/job"
+	"github.com/ebnsina/transflux/internal/validate"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
 )
@@ -227,6 +229,18 @@ func (s *Server) handleWorkerComplete(w http.ResponseWriter, r *http.Request) {
 
 	// Operation-specific handling lives here rather than in the job package,
 	// which knows nothing about media.
+	// A validation report is recorded whether it passed or failed: a failed job
+	// should say which check failed rather than only that something did.
+	if completion.Operation == "validate" && len(res.Output) > 0 {
+		var report validate.Report
+		if err := json.Unmarshal(res.Output, &report); err != nil {
+			slog.ErrorContext(r.Context(), "validation report is not readable", "err", err)
+		} else if err := s.d.Validations.Record(r.Context(), completion.TenantID,
+			completion.JobID, report); err != nil {
+			slog.ErrorContext(r.Context(), "could not record validation", "err", err)
+		}
+	}
+
 	if completion.Succeeded && completion.Operation == "probe" && len(res.Output) > 0 {
 		if _, err := s.d.Probes.Record(r.Context(), completion.TenantID,
 			completion.AssetVersionID, res.Output); err != nil {
