@@ -18,6 +18,16 @@ pre-release and does not yet follow semantic versioning.
   - `POST /worker/v1/heartbeat` — renews liveness, reports utilisation, and
     returns the worker's state, which is how a drain reaches a worker we cannot
     dial.
+  - `POST /worker/v1/lease` — poll for work. `204` when there is nothing to do,
+    which is the normal answer for an idle fleet rather than an error. A
+    draining, unhealthy or offline worker is given nothing.
+  - `POST /worker/v1/attempts/{id}/started` — execution actually began.
+  - `POST /worker/v1/attempts/{id}/progress` — renews the lease, reports
+    progress, and returns `cancel` when the task has been cancelled. This is how
+    a cancellation reaches a worker the control plane cannot dial; worst-case
+    latency is one heartbeat interval.
+  - `POST /worker/v1/attempts/{id}/complete` — success or a classified failure,
+    with per-attempt resource accounting. Returns whether the task will retry.
   - `GET /v1/workers`, `GET /v1/workers/{id}` — fleet view (`admin` scope).
   - `POST /v1/workers/{id}/state` — drain a worker before maintenance, or return
     it to service.
@@ -84,6 +94,13 @@ pre-release and does not yet follow semantic versioning.
 - Re-registering under the same name keeps the worker's id and rotates its
   credential, so a restart does not add a fleet entry and a leaked credential
   stops working.
+- A worker whose lease has been taken away gets `409 stale_attempt` on any
+  report, telling it to stop and discard its output. This is what stops a worker
+  returning from a network partition overwriting a result another worker already
+  produced.
+- Retry budget is consumed when a task is leased, not when it fails. A worker
+  that dies silently still counts, or a task that kills every worker it touches
+  would be retried forever.
 - A worker is marked `offline` after 30 seconds without a heartbeat. Reclaiming
   the work it held is a separate mechanism, so a slow network does not abandon
   work that is still running.

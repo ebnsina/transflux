@@ -14,6 +14,7 @@ import (
 
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
+	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/upload"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
@@ -25,7 +26,9 @@ type Deps struct {
 	Assets            *asset.Store
 	Uploads           *upload.Service
 	Workers           *worker.Store
+	Jobs              *job.Store
 	HeartbeatInterval time.Duration
+	LeaseTTL          time.Duration
 }
 
 type Server struct{ d Deps }
@@ -79,6 +82,10 @@ func (s *Server) Handler() http.Handler {
 	// so it is mounted outside the /v1 tenant surface entirely.
 	mux.HandleFunc("POST /worker/v1/register", s.handleWorkerRegister)
 	mux.HandleFunc("POST /worker/v1/heartbeat", s.handleWorkerHeartbeat)
+	mux.HandleFunc("POST /worker/v1/lease", s.handleWorkerLease)
+	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/started", s.handleWorkerStarted)
+	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/progress", s.handleWorkerProgress)
+	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/complete", s.handleWorkerComplete)
 
 	return mux
 }

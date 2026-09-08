@@ -2,11 +2,14 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/ebnsina/transflux/internal/auth"
+	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/worker"
+	"github.com/google/uuid"
 )
 
 // ── worker protocol v1 ────────────────────────────────────────────────────
@@ -102,6 +105,127 @@ func bearer(r *http.Request) (string, bool) {
 	}
 	token = strings.TrimSpace(token)
 	return token, token != ""
+}
+
+// ── task lifecycle ────────────────────────────────────────────────────────
+
+// handleWorkerLease is a poll for work. An empty response is the normal answer
+// for an idle fleet, so it is 204 rather than an error.
+func (s *Server) handleWorkerLease(w http.ResponseWriter, r *http.Request) {
+	wk, ok := s.authenticateWorker(w, r)
+	if !ok {
+		return
+	}
+	// A draining, unhealthy or offline worker takes no new work. Draining is
+	// how a machine is emptied before maintenance without killing what it holds.
+	if wk.State != worker.StateOnline {
+		w.Header().Set("X-Worker-State", wk.State)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var req struct {
+		Operations []string `json:"operations"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	reason := fmt.Sprintf("worker %s (%s) requested %v", wk.Name, wk.ID, req.Operations)
+	assignment, err := s.d.Jobs.Lease(r.Context(), wk.ID, req.Operations, s.d.LeaseTTL, reason)
+	switch {
+	case errors.Is(err, job.ErrNoWork):
+		w.WriteHeader(http.StatusNoContent)
+	case err != nil:
+		internalError(w, r, "lease task", err)
+	default:
+		writeJSON(w, http.StatusOK, assignment)
+	}
+}
+
+func (s *Server) handleWorkerStarted(w http.ResponseWriter, r *http.Request) {
+	wk, attemptID, ok := s.workerAttempt(w, r)
+	if !ok {
+		return
+	}
+	switch err := s.d.Jobs.Start(r.Context(), attemptID, wk.ID, s.d.LeaseTTL); {
+	case errors.Is(err, job.ErrStaleAttempt):
+		staleAttempt(w)
+	case err != nil:
+		internalError(w, r, "start attempt", err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleWorkerProgress renews the lease and answers whether the task has been
+// cancelled. Cancellation rides the heartbeat response because the control
+// plane has no route to a worker (ADR-006).
+func (s *Server) handleWorkerProgress(w http.ResponseWriter, r *http.Request) {
+	wk, attemptID, ok := s.workerAttempt(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		ProgressPct float32 `json:"progress_pct"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	cancelled, err := s.d.Jobs.Progress(r.Context(), attemptID, wk.ID, req.ProgressPct, s.d.LeaseTTL)
+	switch {
+	case errors.Is(err, job.ErrStaleAttempt):
+		staleAttempt(w)
+	case err != nil:
+		internalError(w, r, "attempt progress", err)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"cancel":            cancelled,
+			"lease_ttl_seconds": int(s.d.LeaseTTL.Seconds()),
+		})
+	}
+}
+
+func (s *Server) handleWorkerComplete(w http.ResponseWriter, r *http.Request) {
+	wk, attemptID, ok := s.workerAttempt(w, r)
+	if !ok {
+		return
+	}
+	var res job.Result
+	if !decode(w, r, &res) {
+		return
+	}
+
+	retrying, err := s.d.Jobs.Complete(r.Context(), attemptID, wk.ID, res)
+	switch {
+	case errors.Is(err, job.ErrStaleAttempt):
+		staleAttempt(w)
+	case err != nil:
+		internalError(w, r, "complete attempt", err)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"retrying": retrying})
+	}
+}
+
+func (s *Server) workerAttempt(w http.ResponseWriter, r *http.Request) (worker.Worker, uuid.UUID, bool) {
+	wk, ok := s.authenticateWorker(w, r)
+	if !ok {
+		return worker.Worker{}, uuid.Nil, false
+	}
+	attemptID, ok := pathUUID(r, "attempt")
+	if !ok {
+		notFound(w)
+		return worker.Worker{}, uuid.Nil, false
+	}
+	return wk, attemptID, true
+}
+
+// staleAttempt tells a worker its lease is gone so it stops work immediately,
+// rather than finishing an encode nobody will accept.
+func staleAttempt(w http.ResponseWriter) {
+	writeError(w, http.StatusConflict, "stale_attempt",
+		"This attempt no longer holds the lease. Stop work and discard any output.")
 }
 
 // ── administration ────────────────────────────────────────────────────────

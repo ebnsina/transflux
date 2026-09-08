@@ -30,6 +30,10 @@ type Config struct {
 	// A worker is presumed lost after this long without a heartbeat. Three
 	// missed beats, so one slow tick does not evict a healthy worker.
 	WorkerStaleAfter time.Duration
+	// How long a lease survives without a progress report. Long enough that a
+	// slow chunk does not lose its lease, short enough that a dead worker's
+	// work is reclaimed promptly.
+	LeaseTTL time.Duration
 }
 
 func Load() (Config, error) {
@@ -66,6 +70,7 @@ func Load() (Config, error) {
 	}
 	c.HeartbeatInterval = 10 * time.Second
 	c.WorkerStaleAfter = 3 * c.HeartbeatInterval
+	c.LeaseTTL = 60 * time.Second
 
 	lvl := env("TRANSFLUX_LOG_LEVEL", "info")
 	if err := c.LogLevel.UnmarshalText([]byte(strings.ToUpper(lvl))); err != nil {

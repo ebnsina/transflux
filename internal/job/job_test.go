@@ -40,6 +40,13 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 
+	// Leasing is deliberately global — workers are shared infrastructure and
+	// serve every tenant — so leftover queued tasks from an earlier test would
+	// be handed out here. Start each test from an empty queue.
+	if _, err := pool.Exec(ctx, `truncate task_attempts, tasks, jobs cascade`); err != nil {
+		t.Fatal(err)
+	}
+
 	f := &fixture{store: NewStore(pool), pool: pool, tenant: uuid.Must(uuid.NewV7())}
 	if _, err := pool.Exec(ctx,
 		`insert into tenants (id, name, status) values ($1, $2, 'active')`,
