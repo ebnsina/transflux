@@ -185,6 +185,17 @@ func (s *S3Store) PresignGetForWorker(ctx context.Context, key string, ttl time.
 	return req.URL, nil
 }
 
+// PresignPutForWorker signs an upload URL for a worker. Encode outputs go
+// straight from the worker to storage, never through the control plane.
+func (s *S3Store) PresignPutForWorker(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	req, err := s.presignWorker.PresignPutObject(ctx,
+		&s3.PutObjectInput{Bucket: &s.bucket, Key: &key}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", mapErr(err)
+	}
+	return req.URL, nil
+}
+
 func (s *S3Store) CreateMultipart(ctx context.Context, key, contentType string) (string, error) {
 	in := &s3.CreateMultipartUploadInput{Bucket: &s.bucket, Key: &key}
 	if contentType != "" {

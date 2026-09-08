@@ -46,9 +46,11 @@ type Task struct {
 // a name local to this job, so a planner can build a graph without inventing
 // identifiers.
 type NewTask struct {
-	Key          string
-	Operation    string
-	Spec         any
+	Key       string
+	Operation string
+	// Spec is always JSON: typing it stops callers having to guess whether a
+	// []byte here is a document or a value to be encoded.
+	Spec         json.RawMessage
 	Requirements any
 	DependsOn    []string
 	Priority     int
@@ -121,9 +123,9 @@ func (s *Store) Create(ctx context.Context, tenantID, versionID, pipelineVersion
 			state, queuedAt = TaskQueued, &now
 		}
 
-		spec, err := toJSON(t.Spec)
-		if err != nil {
-			return Job{}, err
+		spec := t.Spec
+		if len(spec) == 0 {
+			spec = json.RawMessage("{}")
 		}
 		reqs, err := toJSON(t.Requirements)
 		if err != nil {

@@ -151,7 +151,7 @@ func (s *Server) handleWorkerLease(w http.ResponseWriter, r *http.Request) {
 	default:
 		// Signed now rather than when the job was created: a task can sit
 		// queued for hours, and a URL minted then would already have expired.
-		resolved, err := s.resolveSpec(r, assignment.Spec)
+		resolved, err := s.resolveSpec(r, assignment)
 		if err != nil {
 			internalError(w, r, "resolve task spec", err)
 			return

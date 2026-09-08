@@ -55,6 +55,9 @@ func New(cfg Config, log *slog.Logger) *Agent {
 		"probe": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (job.Result, error) {
 			return probe(ctx, cfg.FFprobeBin, spec, p)
 		},
+		"encode": func(ctx context.Context, bin string, spec json.RawMessage, p func(Progress)) (job.Result, error) {
+			return encodeTask(ctx, cfg.WorkDir, bin, spec, p)
+		},
 	}
 	return a
 }
@@ -213,9 +216,10 @@ func (a *Agent) execute(ctx context.Context, as job.Assignment) {
 	}, log)
 
 	started := time.Now()
+	total := sourceDuration(as.Spec)
 	result, err := exec(runCtx, a.cfg.FFmpegBin, as.Spec, func(p Progress) {
 		progress.Lock()
-		progress.pct = Percent(p.OutTime, 0)
+		progress.pct = Percent(p.OutTime, total)
 		progress.Unlock()
 	})
 	close(done)
@@ -294,6 +298,18 @@ func (a *Agent) report(ctx context.Context, as job.Assignment, result job.Result
 		}
 		backoff *= 2
 	}
+}
+
+// sourceDuration lets progress be reported as a percentage. Media tools report
+// position, not completion, so without the total there is nothing to divide by.
+func sourceDuration(spec json.RawMessage) time.Duration {
+	var s struct {
+		DurationMS int64 `json:"duration_ms"`
+	}
+	if err := json.Unmarshal(spec, &s); err != nil {
+		return 0
+	}
+	return time.Duration(s.DurationMS) * time.Millisecond
 }
 
 func (a *Agent) track(operation string, delta int) {

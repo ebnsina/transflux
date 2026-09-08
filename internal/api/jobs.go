@@ -9,6 +9,8 @@ import (
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/pipeline"
+	"github.com/ebnsina/transflux/internal/probe"
+	"github.com/ebnsina/transflux/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -17,15 +19,6 @@ type createJobRequest struct {
 	Pipeline       string `json:"pipeline"`
 	IdempotencyKey string `json:"idempotency_key"`
 	Priority       int    `json:"priority"`
-}
-
-// sourceRef is what a task spec carries instead of a URL.
-//
-// A presigned URL has a lifetime, and a task can sit queued for hours behind a
-// busy fleet. Storing the reference and signing at lease time means a URL is
-// always fresh when a worker receives it.
-type sourceRef struct {
-	SourceKey string `json:"source_key"`
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +41,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	// The gate: expensive work must never start on a source we have not
 	// confirmed is complete.
+	var pipelineVersionID uuid.UUID
 	source, err := s.d.Assets.Source(r.Context(), p.TenantID, versionID)
 	if errors.Is(err, asset.ErrNotFound) {
 		writeError(w, http.StatusConflict, "source_missing",
@@ -64,7 +58,11 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pipelineVersionID, tasks, err := s.d.Pipelines.Resolve(r.Context(), p.TenantID, req.Pipeline)
+	preset, err := func() (pipeline.Preset, error) {
+		id, preset, err := s.d.Pipelines.Resolve(r.Context(), p.TenantID, req.Pipeline)
+		pipelineVersionID = id
+		return preset, err
+	}()
 	if errors.Is(err, pipeline.ErrUnknownPreset) {
 		writeError(w, http.StatusBadRequest, "unknown_pipeline", err.Error())
 		return
@@ -74,15 +72,26 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spec, err := json.Marshal(sourceRef{SourceKey: *source.StorageKey})
-	if err != nil {
-		internalError(w, r, "build task spec", err)
-		return
+	// A ladder is planned against what the source actually is, so a rung never
+	// asks to upscale. That means the source has to have been probed first.
+	var media probe.Result
+	if preset.NeedsProbe() {
+		media, err = s.d.Probes.Get(r.Context(), p.TenantID, versionID)
+		if errors.Is(err, probe.ErrNotFound) {
+			writeError(w, http.StatusConflict, "probe_required",
+				"This pipeline plans against the source's tracks. Run the probe pipeline first.")
+			return
+		}
+		if err != nil {
+			internalError(w, r, "load probe", err)
+			return
+		}
 	}
-	built := make([]job.NewTask, 0, len(tasks))
-	for _, t := range tasks {
-		t.Spec = json.RawMessage(spec)
-		built = append(built, t)
+
+	built, err := pipeline.Plan(preset, *source.StorageKey, media)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "cannot_plan", err.Error())
+		return
 	}
 
 	priority := req.Priority
@@ -145,24 +154,46 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"pipelines": pipeline.Presets()})
 }
 
-// resolveSpec turns the stored source reference into something a worker can
-// fetch, signed for the network workers are on and only at the moment the work
-// is handed out.
-func (s *Server) resolveSpec(r *http.Request, spec json.RawMessage) (json.RawMessage, error) {
-	var ref sourceRef
-	if err := json.Unmarshal(spec, &ref); err != nil || ref.SourceKey == "" {
-		return spec, nil
+// resolveSpec turns stored references into things a worker can actually use:
+// URLs signed for the network workers are on, minted at the moment the work is
+// handed out rather than when the job was created.
+func (s *Server) resolveSpec(r *http.Request, a job.Assignment) (json.RawMessage, error) {
+	var ref struct {
+		SourceKey   string `json:"source_key"`
+		OutputLabel string `json:"output_label"`
 	}
-
-	url, err := s.d.Storage.PresignGetForWorker(r.Context(), ref.SourceKey, s.d.SourceURLTTL)
-	if err != nil {
-		return nil, err
+	if err := json.Unmarshal(a.Spec, &ref); err != nil {
+		return a.Spec, nil
 	}
 
 	var fields map[string]any
-	if err := json.Unmarshal(spec, &fields); err != nil {
+	if err := json.Unmarshal(a.Spec, &fields); err != nil {
 		return nil, err
 	}
-	fields["input_url"] = url
+
+	if ref.SourceKey != "" {
+		url, err := s.d.Storage.PresignGetForWorker(r.Context(), ref.SourceKey, s.d.SourceURLTTL)
+		if err != nil {
+			return nil, err
+		}
+		fields["input_url"] = url
+	}
+
+	if ref.OutputLabel != "" {
+		// The output key is derived here rather than stored, so it cannot
+		// disagree with the job it belongs to. Version 1 for now; a re-run
+		// writes a new set rather than over this one.
+		key, err := storage.JobArtifactKey(a.TenantID, a.JobID, 1, ref.OutputLabel)
+		if err != nil {
+			return nil, err
+		}
+		url, err := s.d.Storage.PresignPutForWorker(r.Context(), key, s.d.SourceURLTTL)
+		if err != nil {
+			return nil, err
+		}
+		fields["output_key"] = key
+		fields["output_url"] = url
+	}
+
 	return json.Marshal(fields)
 }

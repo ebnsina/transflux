@@ -27,6 +27,16 @@ func ArtifactKey(tenant, asset, job uuid.UUID, setVersion int, label string) (st
 	return fmt.Sprintf("t/%s/assets/%s/jobs/%s/v%d/%s", tenant, asset, job, setVersion, safe), nil
 }
 
+// JobArtifactKey locates an output of a job. The set version is in the path so
+// a re-run writes alongside rather than over: artifacts are immutable.
+func JobArtifactKey(tenant, job uuid.UUID, setVersion int, label string) (string, error) {
+	safe, err := Segment(label)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("t/%s/jobs/%s/v%d/%s", tenant, job, setVersion, safe), nil
+}
+
 // UploadKey is where a multipart upload accumulates before it is verified and
 // promoted to a source. Kept separate so an abandoned upload is trivially
 // identifiable by prefix during garbage collection.

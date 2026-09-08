@@ -8,6 +8,23 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Transcoding.** `POST /v1/jobs` with `pipeline: "transcode-h264"` produces a
+  720p H.264 rendition with AAC audio, uploaded straight from the worker to
+  storage.
+  - **Encoding is configured, not scripted.** Codec, profile, level, resolution,
+    frame rate, rate control, GOP, keyframe interval, pixel format, preset,
+    tune, B-frames, reference frames and colour are structured fields. Every
+    value that reaches the command line comes from an allowlist or is a
+    bounds-checked number, so nothing a caller writes is passed through to a
+    subprocess.
+  - **A rung never upscales.** The ladder is planned against the source's actual
+    tracks: resolution is capped at the source's, aspect ratio is preserved, and
+    the frame rate is never raised. Requires the version to have been probed
+    (`409 probe_required`).
+  - **Colour survives the transcode.** An HDR source produces an HDR rendition,
+    with colour written into the encoder's own signalling rather than only
+    tagged on the stream.
+  - `GET /v1/pipelines` lists what you can name: `probe` and `transcode-h264`.
 - **Media probing.** A probe job inspects a source and records what it
   contains: container, duration, bitrate, and every video, audio and subtitle
   track with codec, resolution, frame rate, pixel format, bit depth, language,
