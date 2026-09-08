@@ -215,9 +215,14 @@ func TestPlanWithoutLadderUsesFixedTasks(t *testing.T) {
 }
 
 func TestEven(t *testing.T) {
-	for in, want := range map[int]int{1: 2, 2: 2, 3: 2, 721: 720, 0: 2, -5: 2} {
+	// Rounding rather than flooring: a 16:9 source scaled to 480 high is
+	// 853.3 wide, which belongs at the conventional 854 rather than 852.
+	// Ties go down, so a dimension is never scaled past the source.
+	for in, want := range map[float64]int{
+		853.3: 854, 359.7: 360, 720: 720, 405: 404, 1: 2, 0: 2, -5: 2, 1919.5: 1920,
+	} {
 		if got := even(in); got != want {
-			t.Errorf("even(%d) = %d, want %d", in, got, want)
+			t.Errorf("even(%v) = %d, want %d", in, got, want)
 		}
 	}
 }

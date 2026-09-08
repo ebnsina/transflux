@@ -46,16 +46,29 @@ type Rung struct {
 var presets = map[string]Preset{
 	"probe": {
 		Name:        "probe",
-		Description: "Inspect the source and record its tracks.",
+		Description: "Look inside and record what it contains.",
 		Tasks: []job.NewTask{
 			{Key: "probe", Operation: "probe"},
 		},
 	},
 	"transcode-h264": {
 		Name:        "transcode-h264",
-		Description: "Transcode to a single 720p H.264 rendition with AAC audio.",
+		Description: "Make a single 720p version with AAC audio.",
 		Ladder: []Rung{
 			{Label: "720p_h264", Width: 1280, Height: 720, CRF: 23, MaxrateBPS: 4_000_000},
+		},
+	},
+	// A ladder, largest first. The rungs are the usual streaming steps: each
+	// roughly halves the pixel count of the one above, which is about the
+	// smallest gap a viewer notices when their connection changes.
+	"ladder-h264": {
+		Name:        "ladder-h264",
+		Description: "Make several sizes so playback can adapt to the connection.",
+		Ladder: []Rung{
+			{Label: "1080p_h264", Width: 1920, Height: 1080, CRF: 22, MaxrateBPS: 8_000_000},
+			{Label: "720p_h264", Width: 1280, Height: 720, CRF: 23, MaxrateBPS: 4_000_000},
+			{Label: "480p_h264", Width: 854, Height: 480, CRF: 24, MaxrateBPS: 1_800_000},
+			{Label: "360p_h264", Width: 640, Height: 360, CRF: 25, MaxrateBPS: 900_000},
 		},
 	},
 }

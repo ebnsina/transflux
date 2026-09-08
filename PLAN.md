@@ -46,8 +46,12 @@ rendition back, and survive a worker being killed mid-encode.
 | 15 | Failure test suite: worker crash, DB restart, storage failure, duplicate task, expired lease, control-plane restart, interrupted upload | ✅ Documented in `docs/TESTING.md` and running in CI alongside image builds and the dashboard checks |
 
 ## P1 — Production VOD
-Chunked encoding (keyframe-aligned, with documented unsafe cases and a
-whole-file fallback), parallel encode, HEVC + AV1, encoding ladders, thumbnails
+
+Done: **encoding ladders** and **parallel encode** — a 4K source produces four
+renditions across two workers, every one checked, HDR preserved on each.
+
+Remaining: chunked encoding (keyframe-aligned, with documented unsafe cases and
+a whole-file fallback), HEVC + AV1, thumbnails
 and sprites with their WebVTT index, posters, multiple audio tracks, loudness
 normalisation to EBU R128, subtitle conversion, CMAF/HLS/DASH packaging, media
 QC beyond technical validation, signed delivery URLs, media encryption,

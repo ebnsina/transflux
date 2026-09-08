@@ -53,6 +53,18 @@ recovers. These are the tests worth running before believing anything else.
 | A secret reaches a log line | `TestSecretsNeverReachTheLog` — including via `With` and inside groups |
 | One tenant reaches another's data | Cross-tenant tests in `auth`, `upload`, `job` and `artifact` |
 
+## The media corpus
+
+```sh
+./scripts/testdata.sh          # writes testdata/
+```
+
+Fixtures are generated rather than committed: a repository is a poor place for
+binaries, and a generator says what a file is supposed to be in a way a
+checked-in mp4 never can. The set covers 4K HDR10, ordinary SDR 1080p, a source
+too small to fill a ladder, portrait, two audio languages, something that is
+not media at all, and a real file cut in half.
+
 ## Media tests
 
 Tests that touch media generate their own fixtures with FFmpeg rather than

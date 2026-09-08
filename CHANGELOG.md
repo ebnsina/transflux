@@ -8,6 +8,15 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Encoding ladders.** `pipeline: "ladder-h264"` produces 1080p, 720p, 480p and
+  360p versions so playback can adapt to the connection. Each is encoded
+  independently, so they run on different machines at the same time, and every
+  one is checked before any of them is delivered.
+  - A source is never asked to fill a rung it cannot. A 720p source produces
+    720p, 480p and 360p — not three copies of the same picture presented as if
+    a viewer could choose between them. A source smaller than every rung still
+    produces one, at its own size.
+  - Colour is carried into every rendition, not only the largest.
 - **Dashboard.** A SvelteKit single-page app served alongside the API on one
   origin: media with its tracks and colour, processing with its steps, runs and
   quality checks, the machines available to do the work, and downloads over
