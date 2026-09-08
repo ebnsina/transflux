@@ -116,6 +116,9 @@ type Completion struct {
 	AssetVersionID uuid.UUID
 	Succeeded      bool
 	Retrying       bool
+	// JobState after this completion, so a caller can close out an artifact
+	// set without asking again and racing another worker's report.
+	JobState JobState
 }
 
 // Complete finishes an attempt and applies the retry policy to its task.
@@ -198,6 +201,11 @@ func (s *Store) Complete(ctx context.Context, attemptID, workerID uuid.UUID, res
 		return s.reconcileJob(ctx, tx, at.tenantID, at.jobID)
 	})
 	c.Retrying = retrying
+	if err == nil {
+		if j, getErr := s.Get(ctx, c.TenantID, c.JobID); getErr == nil {
+			c.JobState = j.State
+		}
+	}
 	return c, err
 }
 
@@ -208,6 +216,31 @@ func closeAttemptCancelled(ctx context.Context, tx pgx.Tx, attemptID uuid.UUID) 
 		       failure_reason = 'the task was cancelled while this attempt was running'
 		 where id = $1`, attemptID)
 	return err
+}
+
+// AttemptContext identifies what an attempt is working on. It is returned only
+// to the worker that currently holds the lease.
+type AttemptContext struct {
+	TenantID uuid.UUID
+	TaskID   uuid.UUID
+	JobID    uuid.UUID
+}
+
+// AuthorizeAttempt confirms this worker still holds the lease, and says what
+// the attempt belongs to. Anything a worker reports outside the completion call
+// — registering an artifact, for instance — goes through here first, so a
+// worker whose lease was taken away cannot write results for a task that has
+// been given to someone else.
+func (s *Store) AuthorizeAttempt(ctx context.Context, attemptID, workerID uuid.UUID) (AttemptContext, error) {
+	var c AttemptContext
+	err := s.withAttempt(ctx, attemptID, workerID, func(tx pgx.Tx, at attemptRow) error {
+		if at.taskState == TaskCancelled {
+			return ErrStaleAttempt
+		}
+		c = AttemptContext{TenantID: at.tenantID, TaskID: at.taskID, JobID: at.jobID}
+		return nil
+	})
+	return c, err
 }
 
 type attemptRow struct {

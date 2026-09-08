@@ -237,6 +237,19 @@ func (s *Server) handleWorkerComplete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// An artifact set is incomplete by definition until its job is done, so
+	// nothing should be delivered from it before this.
+	switch completion.JobState {
+	case job.JobSucceeded:
+		if err := s.d.Artifacts.MarkComplete(r.Context(), completion.TenantID, completion.JobID); err != nil {
+			slog.ErrorContext(r.Context(), "could not complete artifact set", "err", err)
+		}
+	case job.JobFailed, job.JobCancelled:
+		if err := s.d.Artifacts.MarkFailed(r.Context(), completion.TenantID, completion.JobID); err != nil {
+			slog.ErrorContext(r.Context(), "could not fail artifact set", "err", err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"retrying": completion.Retrying})
 }
 

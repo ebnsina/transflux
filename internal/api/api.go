@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ebnsina/transflux/internal/artifact"
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/auth"
 	"github.com/ebnsina/transflux/internal/job"
@@ -32,12 +33,16 @@ type Deps struct {
 	Jobs              *job.Store
 	Pipelines         *pipeline.Store
 	Probes            *probe.Store
+	Artifacts         *artifact.Store
 	Storage           storage.Store
 	HeartbeatInterval time.Duration
 	LeaseTTL          time.Duration
 	// SourceURLTTL must comfortably outlast a lease, or a worker's input URL
 	// expires part way through a long encode.
 	SourceURLTTL time.Duration
+	// DownloadURLTTL bounds how long a signed delivery URL lives. Short, so a
+	// leaked link stops working rather than becoming a public mirror.
+	DownloadURLTTL time.Duration
 }
 
 type Server struct{ d Deps }
@@ -85,6 +90,8 @@ func (s *Server) Handler() http.Handler {
 	v1.Handle("GET /v1/jobs/{id}", scoped(auth.ScopeJobsRead, s.handleGetJob))
 	v1.Handle("POST /v1/jobs/{id}/cancel", scoped(auth.ScopeJobsWrite, s.handleCancelJob))
 	v1.Handle("GET /v1/pipelines", scoped(auth.ScopeJobsRead, s.handleListPipelines))
+	v1.Handle("GET /v1/jobs/{id}/artifacts", scoped(auth.ScopeJobsRead, s.handleListArtifacts))
+	v1.Handle("GET /v1/artifacts/{id}/download", scoped(auth.ScopeJobsRead, s.handleDownloadArtifact))
 
 	v1.Handle("GET /v1/workers", adminScoped(s.handleListWorkers))
 	v1.Handle("GET /v1/workers/{id}", adminScoped(s.handleGetWorker))
@@ -99,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /worker/v1/lease", s.handleWorkerLease)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/started", s.handleWorkerStarted)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/progress", s.handleWorkerProgress)
+	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/artifacts", s.handleRegisterArtifact)
 	mux.HandleFunc("POST /worker/v1/attempts/{attempt}/complete", s.handleWorkerComplete)
 
 	return mux

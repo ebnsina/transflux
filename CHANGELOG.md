@@ -8,6 +8,21 @@ pre-release and does not yet follow semantic versioning.
 
 ### Added
 
+- **Artifacts.** A job's outputs are recorded as immutable, versioned artifacts
+  and can be fetched with a short-lived signed URL.
+  - `GET /v1/jobs/{id}/artifacts` — the job's artifact sets and what is in them:
+    label, kind, size, checksum, and a media summary (codec, resolution, frame
+    rate, colour) so a caller can choose between renditions without fetching
+    any of them.
+  - `GET /v1/artifacts/{id}/download` — a signed URL valid for 15 minutes.
+    Media never passes through the control plane, and a permanent public URL is
+    never the only way to reach content.
+  - Nothing is overwritten: a second output claiming a label that is taken is a
+    conflict, not an update. A re-run produces a new set version alongside the
+    old, so a URL that resolved to some bytes yesterday still resolves to those
+    bytes today.
+  - An artifact set is `building` until its job finishes, so nothing is
+    delivered from a set that is still missing outputs.
 - **Transcoding.** `POST /v1/jobs` with `pipeline: "transcode-h264"` produces a
   720p H.264 rendition with AAC audio, uploaded straight from the worker to
   storage.
@@ -151,8 +166,11 @@ pre-release and does not yet follow semantic versioning.
 - Re-registering under the same name keeps the worker's id and rotates its
   credential, so a restart does not add a fleet entry and a leaked credential
   stops working.
+- Registration checks storage before recording anything: a worker reporting an
+  output it did not upload, or one that arrived truncated, is refused rather
+  than leaving a record that points at nothing.
 - A worker whose lease has been taken away gets `409 stale_attempt` on any
-  report, telling it to stop and discard its output. This is what stops a worker
+  report, including artifact registration, telling it to stop and discard its output. This is what stops a worker
   returning from a network partition overwriting a result another worker already
   produced.
 - **Work survives losing a worker.** A lease that stops being renewed is

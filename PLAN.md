@@ -40,7 +40,7 @@ rendition back, and survive a worker being killed mid-encode.
 | 9 | Worker binary: task loop, FFmpeg subprocess supervision, progress parsing, process-group kill | ✅ Cancel kills FFmpeg in <1s with no stray processes; real worker registers 206 detected encoders against the live stack |
 | 10 | Probe task (ffprobe → tracks, colour/HDR fields populated) | ✅ A BT.2020/PQ source probes as `hdr10` end to end, on both the local and pinned FFmpeg builds |
 | 11 | Encode task: structured config → argv, H.264 + AAC | ✅ Vocabulary and injection attempts rejected; a 4K HDR source transcoded to 720p with BT.2020/PQ intact and keyframes on the 2s grid |
-| 12 | Artifact registration (idempotent, lease-bound), artifact sets | A stale attempt cannot register an artifact |
+| 12 | Artifact registration (idempotent, lease-bound), artifact sets | ✅ A second worker registering on someone else's attempt gets 409; retries are idempotent; delivery URL round-tripped the HDR rendition |
 | 13 | Validate task: exists, checksum, probe, codec/resolution/duration/audio match | A truncated output fails validation despite FFmpeg exit 0 |
 | 14 | Observability: structured logs with redaction, metrics, per-attempt resource accounting | Content keys never appear in logs (test asserts this) |
 | 15 | Failure test suite: worker crash, DB restart, storage failure, duplicate task, expired lease, control-plane restart, interrupted upload | All pass in CI |

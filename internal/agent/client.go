@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ebnsina/transflux/internal/artifact"
 	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
@@ -78,6 +79,13 @@ func (c *Client) Progress(ctx context.Context, attemptID uuid.UUID, pct float32)
 	err := c.do(ctx, http.MethodPost, "/worker/v1/attempts/"+attemptID.String()+"/progress",
 		c.credential, map[string]float32{"progress_pct": pct}, &out)
 	return out.Cancel, err
+}
+
+// RegisterArtifact records one output. Registering before completing means a
+// set is never closed with an artifact missing from it.
+func (c *Client) RegisterArtifact(ctx context.Context, attemptID uuid.UUID, reg artifact.Registration) error {
+	return c.do(ctx, http.MethodPost, "/worker/v1/attempts/"+attemptID.String()+"/artifacts",
+		c.credential, reg, nil)
 }
 
 func (c *Client) Complete(ctx context.Context, attemptID uuid.UUID, res job.Result) error {

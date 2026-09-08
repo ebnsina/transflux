@@ -101,6 +101,7 @@ internal/auth/       API keys, authentication, scopes
 internal/tenant/     tenants and quotas
 internal/audit/      append-only audit trail, redaction
 internal/job/        jobs, tasks, attempts, the task state machine
+internal/artifact/   immutable artifact sets and signed delivery
 internal/encode/     structured encoding config and argv construction
 internal/pipeline/   built-in pipeline presets and ladder planning
 internal/probe/      ffprobe parsing, tracks, colour and HDR

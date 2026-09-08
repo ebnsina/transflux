@@ -4,19 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/ebnsina/transflux/internal/artifact"
 	"github.com/ebnsina/transflux/internal/job"
 	"github.com/ebnsina/transflux/internal/worker"
 	"github.com/google/uuid"
 )
 
+// Outcome is what an executor produces: the result to report, plus any outputs
+// to register as artifacts. Artifacts are registered before the task completes,
+// so a set is never closed with an output missing from it.
+type Outcome struct {
+	Result    job.Result
+	Artifacts []artifact.Registration
+}
+
 // Executor runs one kind of task. A failure it can describe is returned as an
 // unsuccessful Result; only something that stopped it from trying at all is
 // returned as an error.
-type Executor func(ctx context.Context, bin string, spec json.RawMessage, onProgress func(Progress)) (job.Result, error)
+type Executor func(ctx context.Context, bin string, spec json.RawMessage, onProgress func(Progress)) (Outcome, error)
 
 type Config struct {
 	ControlPlaneURL string
@@ -52,10 +62,11 @@ func New(cfg Config, log *slog.Logger) *Agent {
 		slots:  map[string]int{},
 	}
 	a.executors = map[string]Executor{
-		"probe": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (job.Result, error) {
-			return probe(ctx, cfg.FFprobeBin, spec, p)
+		"probe": func(ctx context.Context, _ string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
+			res, err := probe(ctx, cfg.FFprobeBin, spec, p)
+			return Outcome{Result: res}, err
 		},
-		"encode": func(ctx context.Context, bin string, spec json.RawMessage, p func(Progress)) (job.Result, error) {
+		"encode": func(ctx context.Context, bin string, spec json.RawMessage, p func(Progress)) (Outcome, error) {
 			return encodeTask(ctx, cfg.WorkDir, bin, spec, p)
 		},
 	}
@@ -217,13 +228,14 @@ func (a *Agent) execute(ctx context.Context, as job.Assignment) {
 
 	started := time.Now()
 	total := sourceDuration(as.Spec)
-	result, err := exec(runCtx, a.cfg.FFmpegBin, as.Spec, func(p Progress) {
+	outcome, err := exec(runCtx, a.cfg.FFmpegBin, as.Spec, func(p Progress) {
 		progress.Lock()
 		progress.pct = Percent(p.OutTime, total)
 		progress.Unlock()
 	})
 	close(done)
 
+	result := outcome.Result
 	if err != nil {
 		if runCtx.Err() != nil && ctx.Err() == nil {
 			// Cancelled by the control plane. It already knows; saying the task
@@ -234,6 +246,23 @@ func (a *Agent) execute(ctx context.Context, as job.Assignment) {
 		result = failure(job.ClassUnknown, err.Error())
 	}
 	result.Metrics.WallSeconds = time.Since(started).Seconds()
+
+	// Register outputs before reporting completion. A set closed with an
+	// artifact missing looks complete and is not.
+	if result.Success {
+		for _, reg := range outcome.Artifacts {
+			if err := a.client.RegisterArtifact(ctx, as.AttemptID, reg); err != nil {
+				if errors.Is(err, job.ErrStaleAttempt) {
+					log.Warn("lease lost before the output could be registered")
+					return
+				}
+				log.Error("could not register artifact", "label", reg.Label, "err", err)
+				result = failure(job.ClassTransient,
+					fmt.Sprintf("could not register %s: %v", reg.Label, err))
+				break
+			}
+		}
+	}
 
 	log.Info("task finished", "success", result.Success, "seconds", result.Metrics.WallSeconds)
 	a.report(ctx, as, result)

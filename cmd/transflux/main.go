@@ -21,6 +21,7 @@ import (
 	"syscall"
 
 	"github.com/ebnsina/transflux/internal/api"
+	"github.com/ebnsina/transflux/internal/artifact"
 	"github.com/ebnsina/transflux/internal/asset"
 	"github.com/ebnsina/transflux/internal/audit"
 	"github.com/ebnsina/transflux/internal/auth"
@@ -107,8 +108,10 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, store sto
 			LeaseTTL:          cfg.LeaseTTL,
 			Pipelines:         pipeline.NewStore(pool),
 			Probes:            probe.NewStore(pool),
+			Artifacts:         artifact.NewStore(pool, store),
 			Storage:           store,
 			SourceURLTTL:      cfg.SourceURLTTL,
+			DownloadURLTTL:    cfg.DownloadURLTTL,
 		}).Handler(),
 	}
 

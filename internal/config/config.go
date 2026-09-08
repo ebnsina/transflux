@@ -41,6 +41,9 @@ type Config struct {
 	// How long a worker's presigned source URL stays valid. Comfortably longer
 	// than a lease, so a long encode does not lose its input part way through.
 	SourceURLTTL time.Duration
+	// How long a delivery URL lives. Short on purpose: a leaked link should
+	// stop working rather than become a public mirror.
+	DownloadURLTTL time.Duration
 }
 
 func Load() (Config, error) {
@@ -88,6 +91,7 @@ func Load() (Config, error) {
 	}
 	c.LeaseSweepInterval = 5 * time.Second
 	c.SourceURLTTL = 6 * time.Hour
+	c.DownloadURLTTL = 15 * time.Minute
 
 	lvl := env("TRANSFLUX_LOG_LEVEL", "info")
 	if err := c.LogLevel.UnmarshalText([]byte(strings.ToUpper(lvl))); err != nil {

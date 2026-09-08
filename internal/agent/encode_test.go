@@ -78,14 +78,25 @@ func TestEncodeProducesAndUploadsOutput(t *testing.T) {
 	defer srv.Close()
 
 	var progressSeen bool
-	res, err := encodeTask(context.Background(), t.TempDir(), "ffmpeg",
+	outcome, err := encodeTask(context.Background(), t.TempDir(), "ffmpeg",
 		encodeSpec(t, inputURL, srv.URL+"/out.mp4", nil),
 		func(Progress) { progressSeen = true })
 	if err != nil {
 		t.Fatal(err)
 	}
+	res := outcome.Result
 	if !res.Success {
 		t.Fatalf("encode failed: %s", res.FailureReason)
+	}
+
+	// The output must be offered for registration, with a checksum taken from
+	// the bytes that were actually sent.
+	if len(outcome.Artifacts) != 1 {
+		t.Fatalf("produced %d artifacts to register, want 1", len(outcome.Artifacts))
+	}
+	reg := outcome.Artifacts[0]
+	if reg.Kind != "rendition" || reg.ChecksumAlgo != "sha256" || len(reg.Checksum) != 32 {
+		t.Errorf("registration = %+v, want a sha256-checksummed rendition", reg)
 	}
 	if !progressSeen {
 		t.Error("no progress was reported during the encode")
@@ -169,7 +180,8 @@ func TestEncodeRejectsBadSpecsPermanently(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := encodeTask(ctx, t.TempDir(), "ffmpeg", tc.spec, nil)
+			outcome, err := encodeTask(ctx, t.TempDir(), "ffmpeg", tc.spec, nil)
+			res := outcome.Result
 			if err != nil {
 				t.Fatalf("returned a transport error: %v", err)
 			}
@@ -190,10 +202,11 @@ func TestEncodeRejectsBadSpecsPermanently(t *testing.T) {
 	bad := encodeSpec(t, inputURL, "http://x.test/o", func(c *encode.Config) {
 		c.Video.Preset = "warp-speed"
 	})
-	res, err := encodeTask(ctx, t.TempDir(), "ffmpeg", bad, nil)
+	outcome, err := encodeTask(ctx, t.TempDir(), "ffmpeg", bad, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	res := outcome.Result
 	if res.Success || res.FailureClass != job.ClassPermanentConfig {
 		t.Errorf("an unknown preset gave %+v, want a permanent config failure", res)
 	}
@@ -211,11 +224,12 @@ func TestEncodeClassifiesBadMediaAsPermanent(t *testing.T) {
 	srv := httptest.NewServer(sink.handler())
 	defer srv.Close()
 
-	res, err := encodeTask(context.Background(), t.TempDir(), "ffmpeg",
+	outcome, err := encodeTask(context.Background(), t.TempDir(), "ffmpeg",
 		encodeSpec(t, inputURL, srv.URL+"/out.mp4", nil), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	res := outcome.Result
 	if res.Success {
 		t.Fatal("garbage input encoded successfully")
 	}
@@ -239,11 +253,12 @@ func TestEncodeTreatsUploadFailureAsTransient(t *testing.T) {
 	srv := httptest.NewServer(sink.handler())
 	defer srv.Close()
 
-	res, err := encodeTask(context.Background(), t.TempDir(), "ffmpeg",
+	outcome, err := encodeTask(context.Background(), t.TempDir(), "ffmpeg",
 		encodeSpec(t, inputURL, srv.URL+"/out.mp4", nil), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	res := outcome.Result
 	if res.Success {
 		t.Fatal("an encode whose upload failed reported success")
 	}
