@@ -6,6 +6,19 @@ Design is in `ARCHITECTURE.md`, decisions in `docs/adr/`, schema proposal in
 Rule for every slice: it ends with something runnable and a test that fails if
 the logic breaks. No slice is "done" because the code compiles.
 
+## Confirmed requirements
+
+Answers that shape the plan, recorded so later slices do not relitigate them.
+
+| | Answer | Consequence |
+|---|---|---|
+| Callers | **Both** internal apps and third-party customers | `tenant_id` is a security boundary, not accounting. API keys, scopes, quotas and cross-tenant tests are P0. The `/v1` contract is a promise once external callers exist. |
+| Deployment | One controlled box for the control plane; GPU nodes later | ADR-008 stands. Slot capacity is declared per worker so a GPU node joins with no control-plane change. |
+| DRM | Real, but only once the core is solid | Stays P2. The four-level model, KIDs and key lifecycle are designed now so it is not a rewrite later. |
+| Scale | No numbers yet; "millions" eventually | Do not optimise for a number we do not have. Keep the scheduler stateless and the artifact path immutable so scaling out stays a capacity question. |
+| Codecs | H.264 is enough; leave room | P0 encodes H.264/AAC. Codec is structured config plus a worker capability, so HEVC and AV1 are new profiles and capability gates, not new code paths. |
+| Pipelines | Built-in presets now, custom later | `pipeline_versions.definition` is validated against known stages; a custom-pipeline API is P1+. |
+
 ## P0 — Foundation
 
 The target is one end-to-end path: upload an MP4, get a validated 720p H.264

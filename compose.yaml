@@ -1,0 +1,30 @@
+name: transflux
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: transflux
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transflux}
+      POSTGRES_DB: transflux
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transflux"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  control-plane:
+    build: .
+    environment:
+      TRANSFLUX_ENV: dev
+      TRANSFLUX_HTTP_ADDR: ":8080"
+      TRANSFLUX_DATABASE_URL: postgres://transflux:${POSTGRES_PASSWORD:-transflux}@postgres:5432/transflux?sslmode=disable
+      TRANSFLUX_LOG_LEVEL: debug
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+volumes:
+  pgdata:
