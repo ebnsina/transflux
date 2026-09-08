@@ -197,6 +197,15 @@ pre-release and does not yet follow semantic versioning.
   log file even from a debug line added later. A presigned URL is treated as a
   secret because it is a bearer credential for one object.
 
+### Testing
+
+- Continuous integration runs the whole suite against real PostgreSQL, MinIO and
+  FFmpeg, builds both container images, checks the worker image still ships the
+  FFmpeg version the code is written against, and lints, type-checks and builds
+  the dashboard.
+- `docs/TESTING.md` lists every way the system is expected to break and the test
+  that proves it recovers.
+
 ### Notes
 
 - Every authentication failure returns an identical `401 unauthorized` —

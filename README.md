@@ -113,6 +113,7 @@ internal/obs/        log redaction, metrics, queue gauges
 internal/config/     environment configuration
 internal/db/         pool + embedded forward-only migrations
 docs/adr/            architecture decision records
+docs/TESTING.md      how to run the tests, and the failure suite
 docs/schema.sql      full schema proposal (design; migrations grow per slice)
 ARCHITECTURE.md      planes, domain model, state machine, protocol, threat model
 PLAN.md              phased implementation plan

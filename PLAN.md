@@ -43,7 +43,7 @@ rendition back, and survive a worker being killed mid-encode.
 | 12 | Artifact registration (idempotent, lease-bound), artifact sets | ✅ A second worker registering on someone else's attempt gets 409; retries are idempotent; delivery URL round-tripped the HDR rendition |
 | 13 | Validate task: exists, checksum, probe, codec/resolution/duration/audio match | ✅ A truncated output failed on size, checksum and playability after the encode had exited 0; the set was marked failed |
 | 14 | Observability: structured logs with redaction, metrics, per-attempt resource accounting | ✅ Eleven secret-shaped fields proven unloggable, including via `With` and inside groups; metrics verified on the live stack; encode recorded 3.59s CPU and 651MB peak |
-| 15 | Failure test suite: worker crash, DB restart, storage failure, duplicate task, expired lease, control-plane restart, interrupted upload | All pass in CI |
+| 15 | Failure test suite: worker crash, DB restart, storage failure, duplicate task, expired lease, control-plane restart, interrupted upload | ✅ Documented in `docs/TESTING.md` and running in CI alongside image builds and the dashboard checks |
 
 ## P1 — Production VOD
 Chunked encoding (keyframe-aligned, with documented unsafe cases and a

@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  control-plane:
+    name: Control plane and workers
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: transflux
+          POSTGRES_PASSWORD: transflux
+          POSTGRES_DB: transflux_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U transflux"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The media tests run real encodes, so the runner needs the same tools a
+      # worker has. The floor the agent enforces is FFmpeg 6.
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+
+      # MinIO needs a command, which service containers cannot supply, so it is
+      # started here instead.
+      - name: Start object storage
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=transflux \
+            -e MINIO_ROOT_PASSWORD=transflux123 \
+            minio/minio:latest server /data
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            sleep 2
+          done
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      # -p 1 because the integration tests share one database and lease from a
+      # queue that is global by design; package tests running in parallel clear
+      # each other's rows.
+      - name: Test
+        env:
+          TRANSFLUX_TEST_DATABASE_URL: postgres://transflux:transflux@localhost:5432/transflux_test?sslmode=disable
+          TRANSFLUX_TEST_S3_ENDPOINT: http://localhost:9000
+          TRANSFLUX_TEST_S3_ACCESS_KEY: transflux
+          TRANSFLUX_TEST_S3_SECRET_KEY: transflux123
+        run: go test ./... -count=1 -p 1 -timeout 15m
+
+      # The schema proposal is a design document, so it is proven to still
+      # apply rather than left to drift from the migrations.
+      - name: Check the schema proposal applies
+        env:
+          PGPASSWORD: transflux
+        run: |
+          psql -h localhost -U transflux -d postgres -c 'create database schemacheck'
+          psql -h localhost -U transflux -d schemacheck -v ON_ERROR_STOP=1 -q -f docs/schema.sql
+          echo 'schema.sql applies cleanly'
+
+  images:
+    name: Container images
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both binaries have to build in the environment they actually ship in,
+      # not only on a developer's machine.
+      - name: Build the control plane image
+        run: docker build -f Dockerfile -t transflux:ci .
+
+      - name: Build the worker image
+        run: docker build -f Dockerfile.worker -t transflux-worker:ci .
+
+      # The pinned FFmpeg is part of the contract: a base image bump that
+      # changes it should fail here rather than in production.
+      - name: Check the worker's FFmpeg
+        run: |
+          version=$(docker run --rm --entrypoint ffmpeg transflux-worker:ci -version | head -1)
+          echo "$version"
+          echo "$version" | grep -qE 'ffmpeg version 6\.' || {
+            echo "The worker image no longer ships FFmpeg 6.x. If that is deliberate, update this check."
+            exit 1
+          }
+
+  dashboard:
+    name: Dashboard
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check
+      - run: npm run build
