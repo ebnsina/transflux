@@ -6,6 +6,13 @@ pre-release and does not yet follow semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- **The public landing page now reads as a product page rather than a manual.**
+  It opens with what Transflux does and a real request with the response beside
+  it, shows the rendition ladder and the artifacts a job returns instead of
+  describing them, and keeps the prose to short claims a reader can scan.
+
 ### Added
 
 - **A player in the dashboard.** A finished streaming job gets a Watch button.
