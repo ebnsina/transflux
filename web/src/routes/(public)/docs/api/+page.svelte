@@ -10,21 +10,6 @@
 		returns?: string;
 	};
 
-	const health: Endpoint[] = [
-		{
-			method: 'GET',
-			path: '/healthz',
-			summary:
-				'Liveness. Answers if the process is running at all. No authentication. Use it to decide whether to restart an instance.'
-		},
-		{
-			method: 'GET',
-			path: '/readyz',
-			summary:
-				'Readiness. Answers if the process can serve traffic, including its dependencies. No authentication. Use it to decide whether to send traffic to an instance.'
-		}
-	];
-
 	const identity: Endpoint[] = [
 		{
 			method: 'GET',
@@ -226,9 +211,6 @@ tracks[]:
 	needs an <a href={resolve('/docs')}>API key</a>. If you have not read the overview, start there:
 	the endpoints make more sense in the order you actually call them.
 </p>
-
-<h2>Health</h2>
-{@render list(health)}
 
 <h2>Identity</h2>
 {@render list(identity)}

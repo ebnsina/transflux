@@ -8,6 +8,11 @@ pre-release and does not yet follow semantic versioning.
 
 ### Changed
 
+- **The public API reference now shows only what a third-party integrator can
+  call.** The health endpoints and the `admin` scope were listed there; both are
+  operator concerns, reachable only with a key a tenant is never issued, and
+  publishing them told outsiders about a surface they cannot use.
+
 - **The public landing page now reads as a product page rather than a manual.**
   It opens with what Transflux does and a real request with the response beside
   it, shows the rendition ladder and the artifacts a job returns instead of

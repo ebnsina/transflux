@@ -199,10 +199,6 @@ curl -s -X POST $TF/v1/artifacts/art_M9n0/playback \\
 		identity, so it belongs on a server, never in a browser or a mobile app.
 	</p>
 	<p>
-		The health endpoints, <span class="mono">/healthz</span> and
-		<span class="mono">/readyz</span>, take no key.
-	</p>
-	<p>
 		Call <span class="mono">GET /v1/me</span> to confirm which tenant and which key you are using:
 	</p>
 </div>
@@ -215,10 +211,6 @@ curl -s -X POST $TF/v1/artifacts/art_M9n0/playback \\
 			<tr><th>Scope</th><th>Grants</th></tr>
 		</thead>
 		<tbody>
-			<tr>
-				<td class="mono">admin</td>
-				<td class="muted">Everything. Implies all the scopes below.</td>
-			</tr>
 			<tr>
 				<td class="mono">assets:read</td>
 				<td class="muted">Listing and reading assets, versions and artifacts.</td>
