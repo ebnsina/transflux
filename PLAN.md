@@ -47,33 +47,38 @@ rendition back, and survive a worker being killed mid-encode.
 
 ## P1 — Production VOD
 
-Done: **encoding ladders**, **parallel encode**, and **CMAF/HLS/DASH
-packaging** — a 4K source produces four renditions across two workers, every
-one checked, HDR preserved on each, then packaged into one set of segments that
-serves both protocols.
+**Done.** Encoding ladders and parallel encode; CMAF packaging with one set of
+segments serving HLS and DASH; playback authorisation a real player follows;
+posters and scrubbing thumbnails; signed delivery URLs; HDR preserved end to
+end; the admin dashboard (ADR-010); a public site with documentation.
 
-Also done: **playback authorisation** — a short-lived link a player can follow
-with no credentials, verified by pointing a real player at it. HLS plays; DASH
-needs a delivery layer, which is outside the boundary.
+**Remaining, roughly in the order I would take them:**
 
-Also done: **posters and scrubbing thumbnails**, and a **public site** with
-documentation for third-party callers.
+| | Why it matters | Notes |
+|---|---|---|
+| Multiple audio tracks | A film with two languages currently loses one | The probe already records language and role; the ladder and packager only carry the first track |
+| Subtitle conversion | Captions are an accessibility requirement, not a feature | WebVTT, SRT, TTML, IMSC, CEA-608/708. Tracks are already probed and modelled |
+| HEVC and AV1 | Half the bitrate for the same picture | The encoding vocabulary already accepts them; needs capability gating, presets and real measurement |
+| Loudness normalisation | Renditions that differ in volume are a support problem | EBU R128, so the target is a standard rather than a preference |
+| Chunked encoding | A two-hour film currently encodes on one machine | Keyframe-aligned splitting, with the unsafe cases documented and a whole-file fallback |
+| Quality checks beyond technical | An output can be valid and still wrong | Black frames, frozen frames, silent audio, A/V drift |
+| External sources | Callers who bring their own storage (ADR-011) | Blocked on the SSRF defences in ARCHITECTURE §11 being written and tested against a metadata endpoint, and on credentials being encrypted at rest |
+| Transcription | Generated captions (ADR-012) | Needs whisper.cpp in an ASR worker image, a pinned model in the spec, its own slot class, and machine-generated labelling |
 
-Remaining: chunked encoding (keyframe-aligned, with documented unsafe cases and
-a whole-file fallback), HEVC + AV1, thumbnails
-and sprites with their WebVTT index, posters, multiple audio tracks, loudness
-normalisation to EBU R128, subtitle conversion, CMAF/HLS/DASH packaging, media
-QC beyond technical validation, signed delivery URLs, media encryption,
-DRM-aware packaging, HDR preservation, admin UI (ADR-010).
+## Documentation still owed
 
-Two P1 items carry their own prerequisites:
+ARCHITECTURE.md §61 asks for a set of documents; `DEPLOYMENT.md`, `WORKER.md`,
+`MEDIA_PIPELINE.md`, `SECURITY.md`, `OPERATIONS.md` and `DRM.md` do not exist
+yet. The threat model lives in ARCHITECTURE §11 rather than in SECURITY.md.
 
-- **External sources** (jobs-only callers, ADR-011) do not ship until the SSRF
-  defences in ARCHITECTURE §11 exist and are tested against a metadata-endpoint
-  target, and customer credentials are encrypted at rest.
-- **Transcription** (ADR-012) needs whisper.cpp packaged into an ASR worker
-  image, a pinned model version in the task spec, its own slot class, and
-  machine-generated labelling on the produced tracks.
+## Before this is production-ready
+
+- **No backup has ever been restored.** A backup that has not been restored is
+  not a verified backup, and this is the largest gap.
+- DASH is produced but not deliverable without a CDN that can authorise by
+  prefix. HLS plays today.
+- Control-plane high availability is untested. State is all in PostgreSQL and a
+  restart is safe, but two instances behind a proxy have not been run.
 
 ## P2 — Premium protection and editing
 Clips, subclips, concatenation, animated previews, audio-only extraction,
